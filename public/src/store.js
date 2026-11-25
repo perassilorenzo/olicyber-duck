@@ -1,13 +1,19 @@
 /**
- * Persistenza locale di OliDuck.
- * Schema versionato: ogni dato personale (stati, conversazioni, preferenze)
- * resta in localStorage e non viene mai inviato al server oltre alla cronologia
- * necessaria per la richiesta AI.
+ * Persistenza locale di OliDuck (schema v2).
+ *
+ * I dati ufficiali delle challenge NON sono qui: il catalogo è un file statico.
+ * Qui restano solo stati personali, conversazioni, ultima challenge selezionata
+ * e preferenze dell'interfaccia. Un aggiornamento del catalogo non cancella
+ * nessuna di queste chiavi.
  */
 
 export const STORAGE_KEY = 'oliduck:state';
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export const STATUSES = ['todo', 'in-progress', 'completed'];
+export const GENERAL_CONVERSATION_ID = 'general';
+export const DEFAULT_PANEL_WIDTH = 40;
+export const MIN_PANEL_WIDTH = 22;
+export const MAX_PANEL_WIDTH = 72;
 
 const MAX_MESSAGES_PER_CHALLENGE = 100;
 
@@ -19,18 +25,38 @@ export function defaultState() {
     selectedChallengeId: null,
     preferences: {
       theme: 'light',
-      assistantCollapsed: false,
-      mobileView: 'workspace',
-      filters: { query: '', category: 'all', difficulty: 'all' },
+      panelWidth: DEFAULT_PANEL_WIDTH,
+      activePanel: 'assistant',
+      filters: {
+        query: '', category: 'all', difficulty: 'all', edition: 'all',
+        path: 'all', status: 'all', sort: 'title-asc',
+      },
     },
   };
 }
 
-/** Migrazioni: applicare qui le trasformazioni per versioni future. */
+/** Migrazione v1 → v2: conserva stati, conversazioni e ultima challenge. */
 function migrate(state) {
   if (state.version === SCHEMA_VERSION) return state;
-  if (state.version === undefined || state.version === null) {
-    return { ...defaultState(), ...state, version: SCHEMA_VERSION };
+  if (state.version === 1 || state.version === undefined || state.version === null) {
+    const oldPrefs = state.preferences && typeof state.preferences === 'object' ? state.preferences : {};
+    const oldFilters = oldPrefs.filters && typeof oldPrefs.filters === 'object' ? oldPrefs.filters : {};
+    const oldView = oldPrefs.mobileView;
+    return {
+      ...state,
+      version: SCHEMA_VERSION,
+      preferences: {
+        ...oldPrefs,
+        panelWidth: DEFAULT_PANEL_WIDTH,
+        activePanel: oldView === 'library' ? 'library' : 'assistant',
+        filters: {
+          query: typeof oldFilters.query === 'string' ? oldFilters.query : '',
+          category: typeof oldFilters.category === 'string' ? oldFilters.category : 'all',
+          difficulty: typeof oldFilters.difficulty === 'string' ? oldFilters.difficulty : 'all',
+          edition: 'all', path: 'all', status: 'all', sort: 'title-asc',
+        },
+      },
+    };
   }
   console.warn('[OliDuck] Versione dati sconosciuta, ripristino schema predefinito.');
   return defaultState();
@@ -63,7 +89,7 @@ export function normalizeState(raw) {
   const conversations = {};
   if (state.conversations && typeof state.conversations === 'object') {
     for (const [id, list] of Object.entries(state.conversations)) {
-      if (!Array.isArray(list)) continue;
+      if (!Array.isArray(list) || typeof id !== 'string') continue;
       const messages = list.map(normalizeMessage).filter(Boolean).slice(-MAX_MESSAGES_PER_CHALLENGE);
       if (messages.length) conversations[id] = messages;
     }
@@ -71,6 +97,8 @@ export function normalizeState(raw) {
 
   const prefs = state.preferences && typeof state.preferences === 'object' ? state.preferences : {};
   const filters = prefs.filters && typeof prefs.filters === 'object' ? prefs.filters : {};
+  const width = Number(prefs.panelWidth);
+  const allowedSorts = ['title-asc', 'title-desc', 'category', 'score-desc', 'recent', 'original-id'];
 
   return {
     version: SCHEMA_VERSION,
@@ -79,12 +107,18 @@ export function normalizeState(raw) {
     selectedChallengeId: typeof state.selectedChallengeId === 'string' ? state.selectedChallengeId : null,
     preferences: {
       theme: prefs.theme === 'dark' ? 'dark' : 'light',
-      assistantCollapsed: Boolean(prefs.assistantCollapsed),
-      mobileView: ['library', 'workspace', 'assistant'].includes(prefs.mobileView) ? prefs.mobileView : 'workspace',
+      panelWidth: Number.isFinite(width)
+        ? Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, Math.round(width)))
+        : DEFAULT_PANEL_WIDTH,
+      activePanel: prefs.activePanel === 'library' ? 'library' : 'assistant',
       filters: {
         query: typeof filters.query === 'string' ? filters.query.slice(0, 200) : '',
         category: typeof filters.category === 'string' ? filters.category : 'all',
-        difficulty: ['all', 'Facile', 'Media', 'Difficile'].includes(filters.difficulty) ? filters.difficulty : 'all',
+        difficulty: typeof filters.difficulty === 'string' ? filters.difficulty : 'all',
+        edition: typeof filters.edition === 'string' ? filters.edition : 'all',
+        path: typeof filters.path === 'string' ? filters.path : 'all',
+        status: STATUSES.includes(filters.status) ? filters.status : 'all',
+        sort: allowedSorts.includes(filters.sort) ? filters.sort : 'title-asc',
       },
     },
   };
@@ -191,6 +225,6 @@ export class LocalStore {
   }
 
   selectChallenge(id) {
-    this.update((draft) => { draft.selectedChallengeId = id; });
+    this.update((draft) => { draft.selectedChallengeId = typeof id === 'string' ? id : null; });
   }
 }

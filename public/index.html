@@ -16,7 +16,7 @@
     <header class="topbar">
       <div class="topbar__brand">
         <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 48 48" role="img">
+          <svg viewBox="0 0 48 48">
             <path d="M7 29c0-10 7-17 17-17 7 0 13 3.5 16 10l-7 2.5-8-5.5-7 4.5 3.5 6.5-5.5 3.5L7 29Z" fill="currentColor" />
             <path d="M40 22c4.5.8 7.5 3.2 6.8 5.8-.7 2.3-4 2.4-7.3 1.2l-3.5-2.5 4-4.5Z" fill="#ffc720" />
             <circle cx="31" cy="19.5" r="2" fill="#1b4778" />
@@ -40,7 +40,7 @@
           <span class="ai-status__dot" aria-hidden="true"></span>
           <span id="ai-status-label">Assistente: verifica…</span>
         </div>
-        <button type="button" class="btn btn--ghost btn--sm topbar__assistant" data-open-assistant>
+        <button type="button" class="btn btn--ghost btn--sm topbar__assistant" id="focus-assistant">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" /></svg>
           Assistente
         </button>
@@ -48,20 +48,24 @@
     </header>
 
     <nav class="mobile-tabs" aria-label="Pannelli dell'area di lavoro">
-      <button type="button" data-mobile-tab="library">Libreria</button>
-      <button type="button" data-mobile-tab="workspace" class="is-active">Workspace</button>
-      <button type="button" data-mobile-tab="assistant">Assistant</button>
+      <button type="button" data-panel-tab="library" role="tab" aria-selected="false" tabindex="-1">Libreria</button>
+      <button type="button" data-panel-tab="assistant" role="tab" aria-selected="true" tabindex="0">Assistant</button>
     </nav>
 
-    <main id="main-content" class="workspace" data-view="workspace">
-      <!-- A. Challenge Library -->
-      <section class="panel library-panel" id="library-panel" aria-labelledby="library-title">
+    <main id="main-content" class="workspace" data-view="assistant" style="--library-width: 40%">
+      <!-- A. Challenge Library (~40% per impostazione predefinita) -->
+      <section class="panel library-panel" id="library-panel" aria-labelledby="library-title" role="tabpanel" aria-label="Challenge Library">
         <div class="panel__header">
           <div>
             <p class="eyebrow">Esplora</p>
             <h1 id="library-title">Challenge Library</h1>
           </div>
-          <span class="count-badge" id="challenge-count" aria-live="polite">0 challenge</span>
+          <div class="panel__header-actions">
+            <span class="count-badge" id="challenge-count" aria-live="polite">0 challenge</span>
+            <button type="button" class="icon-btn" id="expand-library" aria-label="Espandi la libreria" title="Espandi la libreria">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+            </button>
+          </div>
         </div>
 
         <div class="library-controls">
@@ -79,110 +83,76 @@
             </label>
             <label class="field">
               <span class="field__label">Difficoltà</span>
-              <select id="difficulty-filter">
-                <option value="all">Tutte</option>
-                <option value="Facile">Facile</option>
-                <option value="Media">Media</option>
-                <option value="Difficile">Difficile</option>
+              <select id="difficulty-filter"><option value="all">Tutte</option></select>
+            </label>
+            <label class="field">
+              <span class="field__label">Edizione</span>
+              <select id="edition-filter"><option value="all">Tutte</option></select>
+            </label>
+            <label class="field">
+              <span class="field__label">Percorso</span>
+              <select id="path-filter"><option value="all">Tutti</option></select>
+            </label>
+            <label class="field">
+              <span class="field__label">Stato personale</span>
+              <select id="status-filter">
+                <option value="all">Tutti</option>
+                <option value="todo">Da fare</option>
+                <option value="in-progress">In corso</option>
+                <option value="completed">Completata</option>
               </select>
             </label>
+            <label class="field">
+              <span class="field__label">Ordina per</span>
+              <select id="sort-filter"></select>
+            </label>
           </div>
+          <button type="button" class="link-btn clear-filters" id="clear-filters">Azzera filtri e ordinamento</button>
         </div>
 
-        <div class="library-list" id="challenge-list" role="list" aria-label="Elenco challenge"></div>
+        <div class="library-list" id="challenge-list" role="list" aria-label="Elenco challenge" tabindex="0">
+          <div class="library-items" id="challenge-items"></div>
+        </div>
         <p class="library-footnote" id="library-footnote">Catalogo dimostrativo — nessuna challenge ufficiale.</p>
       </section>
 
-      <!-- B. Challenge Workspace -->
-      <section class="panel workspace-panel" id="workspace-panel" aria-labelledby="workspace-title">
+      <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" aria-label="Ridimensiona i pannelli" aria-valuemin="22" aria-valuemax="72" aria-valuenow="40" tabindex="0" title="Trascina per ridimensionare · doppio clic per ripristinare">
+        <span class="splitter__grip" aria-hidden="true"></span>
+      </div>
+
+      <!-- B. OliDuck Assistant (~60% per impostazione predefinita) -->
+      <aside class="panel assistant-panel" id="assistant-panel" aria-labelledby="assistant-title" role="tabpanel" aria-label="OliDuck Assistant">
         <div class="panel__header panel__header--compact">
           <div>
-            <p class="eyebrow">Area di studio</p>
-            <h2 id="workspace-title">Challenge Workspace</h2>
-          </div>
-          <button type="button" class="btn btn--ghost btn--sm" id="open-assistant-inline" data-open-assistant>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" /></svg>
-            Chiedi a OliDuck
-          </button>
-        </div>
-
-        <div class="workspace-scroll">
-          <div class="empty-state" id="challenge-empty">
-            <div class="empty-state__art" aria-hidden="true">
-              <svg viewBox="0 0 120 120">
-                <rect x="10" y="24" width="100" height="72" rx="10" fill="currentColor" opacity=".08" />
-                <rect x="20" y="34" width="52" height="7" rx="3.5" fill="currentColor" opacity=".25" />
-                <rect x="20" y="50" width="80" height="5" rx="2.5" fill="currentColor" opacity=".16" />
-                <rect x="20" y="62" width="66" height="5" rx="2.5" fill="currentColor" opacity=".16" />
-                <path d="M44 96c0-12 8-20 20-20 8 0 15 4 18 11l-8 3-8-6-7 5 3 7h-18Z" fill="currentColor" opacity=".55" />
-                <circle cx="72" cy="82" r="2" fill="#fff" />
-              </svg>
-            </div>
-            <h3>Scegli una challenge per iniziare</h3>
-            <p>Seleziona un elemento dalla libreria: qui troverai il testo, gli obiettivi di apprendimento e lo spazio per cambiare stato. OliDuck riceverà automaticamente il contesto della challenge scelta.</p>
-            <button type="button" class="btn btn--primary" data-mobile-tab="library">Apri la libreria</button>
-          </div>
-
-          <article class="challenge-detail" id="challenge-detail" hidden>
-            <div class="challenge-detail__top">
-              <div class="badges" id="detail-badges"></div>
-              <span class="demo-tag" id="detail-demo-tag" hidden>DEMO</span>
-            </div>
-            <h3 id="detail-title" class="challenge-detail__title"></h3>
-            <p id="detail-description" class="challenge-detail__description"></p>
-
-            <div class="status-bar">
-              <div class="status-bar__info">
-                <span class="status-dot" id="detail-status-dot" aria-hidden="true"></span>
-                <span>Stato: <strong id="detail-status-label">Da fare</strong></span>
-              </div>
-              <button type="button" class="btn btn--outline btn--sm" id="cycle-status">Aggiorna stato</button>
-            </div>
-
-            <section class="detail-section" aria-labelledby="statement-heading">
-              <h4 id="statement-heading" class="detail-section__title">Testo della challenge</h4>
-              <div class="prose" id="detail-statement"></div>
-            </section>
-
-            <section class="detail-section" aria-labelledby="goals-heading" id="goals-section">
-              <h4 id="goals-heading" class="detail-section__title">Obiettivi di apprendimento</h4>
-              <ul class="goal-list" id="detail-goals"></ul>
-            </section>
-
-            <section class="detail-section" aria-labelledby="resources-heading">
-              <h4 id="resources-heading" class="detail-section__title">Fonti e allegati</h4>
-              <div class="resource-list" id="detail-resources"></div>
-            </section>
-          </article>
-        </div>
-      </section>
-
-      <!-- C. OliDuck Assistant -->
-      <aside class="panel assistant-panel" id="assistant-panel" aria-labelledby="assistant-title">
-        <button type="button" class="assistant-rail" id="expand-assistant" aria-label="Espandi pannello assistente" title="Espandi assistente">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
-          <span>Assistant</span>
-        </button>
-        <div class="panel__header panel__header--compact">
-          <div>
-            <p class="eyebrow">Tutor contestuale</p>
+            <p class="eyebrow">Tutor didattico</p>
             <h2 id="assistant-title">OliDuck Assistant</h2>
           </div>
-          <div class="assistant-actions">
-            <button type="button" class="icon-btn" id="clear-chat" title="Cancella conversazione" aria-label="Cancella conversazione di questa challenge" disabled>
+          <div class="panel__header-actions">
+            <button type="button" class="icon-btn" id="clear-chat" title="Cancella conversazione" aria-label="Cancella la conversazione corrente" disabled>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5" /></svg>
             </button>
-            <button type="button" class="icon-btn" id="collapse-assistant" title="Riduci pannello" aria-label="Riduci pannello assistente">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+            <button type="button" class="icon-btn" id="expand-assistant" aria-label="Espandi l'assistente" title="Espandi l'assistente">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
             </button>
           </div>
+        </div>
+
+        <div class="assistant-mode" role="radiogroup" aria-label="Modalità di conversazione">
+          <button type="button" id="mode-general" role="radio" aria-checked="true" tabindex="0">
+            <span class="assistant-mode__title">Generale</span>
+            <span class="assistant-mode__hint">Nessuna challenge</span>
+          </button>
+          <button type="button" id="mode-challenge" role="radio" aria-checked="false" tabindex="-1">
+            <span class="assistant-mode__title">Challenge</span>
+            <span class="assistant-mode__hint" id="mode-challenge-hint">Seleziona una challenge</span>
+          </button>
         </div>
 
         <div class="assistant-context" id="assistant-context">
           <span class="assistant-context__icon" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 3V5Z" /></svg>
           </span>
-          <span id="assistant-context-label">Nessuna challenge selezionata</span>
+          <span id="assistant-context-label">Modalità generale: chiedi pure un concetto di cybersecurity.</span>
         </div>
 
         <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-label="Cronologia conversazione">
@@ -191,24 +161,43 @@
           </div>
         </div>
 
+        <div class="chat-status" id="chat-status" role="status" aria-live="polite"></div>
+
         <div class="chat-error" id="chat-error" role="alert" hidden>
           <span id="chat-error-message"></span>
-          <button type="button" id="retry-chat" class="link-btn">Riprova</button>
+          <button type="button" id="retry-chat" class="link-btn" hidden>Riprova</button>
         </div>
 
         <form class="chat-form" id="chat-form">
           <label class="sr-only" for="chat-input">Messaggio per OliDuck</label>
-          <textarea id="chat-input" rows="2" maxlength="4000" placeholder="Chiedi un hint, una spiegazione o verifica il tuo ragionamento…" disabled></textarea>
+          <textarea id="chat-input" rows="2" maxlength="4000" placeholder="Chiedi un hint, una spiegazione o verifica il tuo ragionamento…"></textarea>
           <div class="chat-form__footer">
             <span class="chat-hint">Invio per inviare · Shift+Invio per andare a capo</span>
-            <button type="submit" class="btn btn--primary btn--sm" id="send-chat" disabled>
-              Invia
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 16-8-6 16-3-6-7-2Z" /></svg>
-            </button>
+            <div class="chat-form__buttons">
+              <button type="button" class="btn btn--outline btn--sm" id="cancel-chat" hidden>Annulla</button>
+              <button type="submit" class="btn btn--primary btn--sm" id="send-chat">
+                Invia
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 16-8-6 16-3-6-7-2Z" /></svg>
+              </button>
+            </div>
           </div>
         </form>
       </aside>
     </main>
+
+    <!-- Dettagli in overlay: non è una terza colonna e non blocca la chat. -->
+    <div class="drawer-layer" id="drawer-layer" hidden>
+      <button type="button" class="drawer-backdrop" id="details-backdrop" aria-label="Chiudi i dettagli"></button>
+      <aside class="drawer" id="details-drawer" role="dialog" aria-modal="true" aria-labelledby="details-title" aria-hidden="true" inert>
+        <div class="drawer__header">
+          <h2 id="details-title">Dettagli challenge</h2>
+          <button type="button" class="icon-btn" id="close-details" aria-label="Chiudi i dettagli">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <div class="drawer__body" id="details-body"></div>
+      </aside>
+    </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
@@ -228,14 +217,15 @@
               <option value="dark">Scuro</option>
             </select>
           </label>
-          <label class="check-row">
-            <input type="checkbox" id="assistant-collapsed-setting" />
-            <span>Pannello assistente ridotto di default</span>
+          <label class="field">
+            <span class="field__label" for="panel-width-setting">Libreria: <span id="panel-width-value">40%</span> (assistente: <span id="assistant-width-value">60%</span>)</span>
+            <input type="range" id="panel-width-setting" min="22" max="72" step="1" value="40" />
           </label>
+          <button type="button" class="btn btn--outline btn--sm" id="reset-panels">Ripristina 40% / 60%</button>
           <div class="settings-note" id="storage-note"></div>
           <div class="danger-zone">
             <h3>Dati locali</h3>
-            <p>Le conversazioni e gli stati sono salvati solo in questo browser. Eliminarli non è reversibile.</p>
+            <p>Le conversazioni e gli stati sono salvati solo in questo browser. Eliminarli non è reversibile. L'aggiornamento del catalogo non cancella i progressi.</p>
             <button type="button" class="btn btn--outline btn--sm" id="clear-conversations">Cancella tutte le conversazioni</button>
             <button type="button" class="btn btn--danger btn--sm" id="clear-all-data">Cancella tutti i dati locali</button>
           </div>
@@ -253,8 +243,8 @@
         </div>
         <div class="modal__body prose">
           <p><strong>OliDuck</strong> è un ambiente di studio indipendente per chi si prepara alle Olimpiadi Italiane di Cybersicurezza. Il nome unisce OliCyber e il concetto di <em>rubber duck debugging</em>: spiegare un problema ad alta voce per capirlo meglio.</p>
-          <p>Il cuore del prodotto è l'integrazione tra la libreria delle challenge e un tutor AI che conosce la challenge selezionata. OliDuck non fornisce subito soluzioni: aiuta a comprendere il problema, individuare i concetti, ricevere hint progressivi e verificare il proprio ragionamento.</p>
-          <p>L'interfaccia riprende la famiglia cromatica e il linguaggio visivo del portale OliCyber, con un'identità originale. Le challenge incluse sono esempi didattici contrassegnati come DEMO e non sostituiscono il portale ufficiale.</p>
+          <p>Il workspace ha due pannelli collegati: la Challenge Library e il tutor AI. Puoi chiedere informazioni generali oppure aprire una conversazione dedicata alla challenge selezionata. OliDuck non fornisce subito soluzioni: aiuta a comprendere il problema, individuare i concetti, ricevere hint progressivi e verificare il proprio ragionamento.</p>
+          <p>Le challenge incluse sono esempi didattici contrassegnati come DEMO e non sostituiscono il portale ufficiale. Le fonti pubbliche disponibili e i limiti del catalogo sono documentati in <code>docs/PUBLIC-SOURCES-RESEARCH.md</code>.</p>
           <p>Nessun account è richiesto: progressi e conversazioni restano nel browser. Quando il backend AI non è configurato, l'assistente risponde in modalità DEMO in modo esplicito.</p>
         </div>
       </div>

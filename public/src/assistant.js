@@ -1,16 +1,16 @@
-/** Pannello dell'assistente: chat per challenge, stato di generazione ed errori. */
+/** Assistente: conversazioni separate per challenge, modalità generale, streaming e annullamento sicuro. */
 
 import { byId, formatTime, toast, confirmDialog } from './utils.js';
 import { sendChat, ApiError } from './api.js';
+import { GENERAL_CONVERSATION_ID } from './store.js';
 
 const MAX_HISTORY = 12;
 
-function greetingFor(challenge) {
-  if (!challenge) return null;
-  const goal = Array.isArray(challenge.learningGoals) && challenge.learningGoals.length
-    ? ` Gli obiettivi sono: ${challenge.learningGoals.join(', ')}.`
-    : '';
-  return `Contesto pronto: "${challenge.title}" (${challenge.category}, ${challenge.difficulty}).${goal}\n\nDescrivi cosa hai capito, chiedi un primo hint o proponi il tuo ragionamento: procederò per passaggi, senza darti subito una soluzione.`;
+function node(tag, className, text) {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  if (text !== undefined && text !== null) element.textContent = String(text);
+  return element;
 }
 
 export function createAssistant({ store, getChallenge, onConversationChange }) {
@@ -19,54 +19,44 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
   const form = byId('chat-form');
   const input = byId('chat-input');
   const sendButton = byId('send-chat');
+  const cancelButton = byId('cancel-chat');
   const clearButton = byId('clear-chat');
   const contextLabel = byId('assistant-context-label');
+  const status = byId('chat-status');
   const errorBox = byId('chat-error');
   const errorMessage = byId('chat-error-message');
   const retryButton = byId('retry-chat');
+  const modeButtons = [byId('mode-general'), byId('mode-challenge')];
+  const challengeHint = byId('mode-challenge-hint');
 
-  let challenge = null;
-  let busy = false;
-  let controller = null;
-  let lastRequest = null;
-  let mode = null;
+  let challenge = getChallenge() || null;
+  let mode = challenge ? 'challenge' : 'general';
+  let key = challenge ? challenge.id : GENERAL_CONVERSATION_ID;
+  let active = null;
+  let aiMode = null;
+  const lastRequests = new Map();
 
-  function messageNode(role, content, createdAt) {
-    const wrapper = document.createElement('div');
-    wrapper.className = `chat-message chat-message--${role}`;
-    const label = document.createElement('span');
-    label.className = 'chat-message__role';
-    label.textContent = role === 'user' ? 'Tu' : 'OliDuck';
-    const bubble = document.createElement('div');
-    bubble.className = 'chat-message__bubble';
-    bubble.textContent = content;
-    wrapper.append(label, bubble);
-    if (createdAt) {
-      const time = document.createElement('span');
-      time.className = 'chat-message__time';
-      time.textContent = formatTime(createdAt);
-      wrapper.append(time);
-    }
+  function messageNode(message) {
+    const wrapper = node('div', `chat-message chat-message--${message.role}`);
+    wrapper.append(node('span', 'chat-message__role', message.role === 'user' ? 'Tu' : 'OliDuck'));
+    wrapper.append(node('div', 'chat-message__bubble', message.content));
+    if (message.createdAt) wrapper.append(node('span', 'chat-message__time', formatTime(message.createdAt)));
     return wrapper;
   }
 
-  function typingNode() {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'chat-message chat-message--assistant';
-    const label = document.createElement('span');
-    label.className = 'chat-message__role';
-    label.textContent = 'OliDuck';
-    const bubble = document.createElement('div');
-    bubble.className = 'chat-message__bubble typing';
-    bubble.setAttribute('aria-label', 'OliDuck sta rispondendo');
-    bubble.innerHTML = '<i></i><i></i><i></i>';
-    wrapper.append(label, bubble);
-    return wrapper;
+  function greeting() {
+    if (mode === 'challenge' && challenge) {
+      const goals = challenge.metadata?.learningGoals || [];
+      const suffix = goals.length ? ` Obiettivi: ${goals.join(', ')}.` : '';
+      return `Contesto pronto: "${challenge.title}" (${challenge.category || 'categoria non indicata'}, ${challenge.difficulty || 'difficoltà non indicata'}).${suffix}\n\nDescrivi cosa hai capito, chiedi un primo hint o proponi il tuo ragionamento: procederò per passaggi, senza darti subito una soluzione.`;
+    }
+    return 'Modalità generale: nessuna challenge selezionata. Puoi chiedermi di spiegare un concetto di cybersecurity, un metodo di analisi o come impostare lo studio. Per un tutor contestuale, apri i dettagli di una challenge e scegli la modalità Challenge.';
   }
 
   function hideError() {
     errorBox.hidden = true;
     errorMessage.textContent = '';
+    retryButton.hidden = true;
   }
 
   function showError(message, canRetry = false) {
@@ -80,142 +70,214 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
   }
 
   function render() {
-    log.replaceChildren();
-    const hasChallenge = Boolean(challenge);
-    empty.hidden = hasChallenge;
-    clearButton.disabled = !hasChallenge || busy;
-    input.disabled = !hasChallenge || busy;
-    sendButton.disabled = !hasChallenge || busy || !input.value.trim();
-    const modeSuffix = mode === 'demo' ? ' · DEMO' : mode === 'error' ? ' · offline' : '';
-    contextLabel.textContent = hasChallenge
-      ? `Challenge: ${challenge.title}${modeSuffix}`
-      : `Nessuna challenge selezionata${modeSuffix}`;
-
-    if (!hasChallenge) return;
-    const greeting = greetingFor(challenge);
-    if (greeting) log.append(messageNode('assistant', greeting));
-    for (const message of store.getConversation(challenge.id)) {
-      log.append(messageNode(message.role, message.content, message.createdAt));
+    const busyHere = Boolean(active && active.key === key);
+    const canChallenge = Boolean(challenge);
+    for (const button of modeButtons) {
+      const selected = button.id === (mode === 'general' ? 'mode-general' : 'mode-challenge');
+      button.setAttribute('aria-checked', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+      button.classList.toggle('is-active', selected);
     }
+    challengeHint.textContent = canChallenge ? challenge.title : 'Seleziona una challenge';
+
+    const suffix = aiMode === 'demo' ? ' · DEMO' : aiMode === 'error' ? ' · offline' : '';
+    contextLabel.textContent = mode === 'challenge' && canChallenge
+      ? `Challenge: ${challenge.title}${suffix}`
+      : `Modalità generale${suffix}`;
+
+    log.replaceChildren();
+    empty.hidden = true;
+    log.append(messageNode({ role: 'assistant', content: greeting() }));
+    for (const message of store.getConversation(key)) log.append(messageNode(message));
+
+    clearButton.disabled = store.getConversation(key).length === 0;
+    sendButton.disabled = busyHere || !input.value.trim();
+    cancelButton.hidden = !busyHere;
+    input.disabled = busyHere;
+    status.textContent = busyHere ? 'OliDuck sta rispondendo…' : '';
     scrollToEnd();
   }
 
-  async function submit(message, { isRetry = false } = {}) {
-    if (!challenge || busy || !message?.trim()) return;
-    const challengeId = challenge.id;
-    const context = challenge;
+  function finalize(request) {
+    if (active?.controller !== request.controller) return;
+    active = null;
+    render();
+  }
 
-    busy = true;
-    hideError();
-    if (!isRetry) {
-      const saved = { id: `m-${Date.now()}`, role: 'user', content: message.trim(), createdAt: new Date().toISOString() };
-      store.appendMessage(challengeId, saved);
-      log.append(messageNode('user', saved.content, saved.createdAt));
+  async function submit(rawMessage, { isRetry = false } = {}) {
+    const message = String(rawMessage || '').trim();
+    if (!message || active) return;
+    const requestKey = key;
+    if (requestKey !== GENERAL_CONVERSATION_ID && !challenge) {
+      showError('Seleziona una challenge per usare la modalità contestuale.');
+      return;
     }
-    lastRequest = { challengeId, message: message.trim() };
 
-    const history = store.getConversation(challengeId)
-      .slice(0, -1)
-      .slice(-MAX_HISTORY)
-      .map(({ role, content }) => ({ role, content }));
+    let conversation = store.getConversation(requestKey);
+    if (isRetry && conversation.at(-1)?.role === 'user' && conversation.at(-1)?.content === message) {
+      conversation = conversation.slice(0, -1);
+    }
+    const history = conversation.slice(-MAX_HISTORY).map(({ role, content }) => ({ role, content }));
+    if (!isRetry) {
+      store.appendMessage(requestKey, {
+        role: 'user', content: message, createdAt: new Date().toISOString(),
+      });
+    }
+    lastRequests.set(requestKey, message);
+    hideError();
 
     input.value = '';
-    const typing = typingNode();
+    input.style.height = '';
+    const typing = node('div', 'chat-message chat-message--assistant');
+    typing.append(node('span', 'chat-message__role', 'OliDuck'));
+    const bubble = node('div', 'chat-message__bubble typing');
+    bubble.setAttribute('aria-label', 'OliDuck sta rispondendo');
+    bubble.innerHTML = '<i></i><i></i><i></i>';
+    typing.append(bubble);
     log.append(typing);
-    sendButton.disabled = true;
-    input.disabled = true;
     scrollToEnd();
 
-    controller = new AbortController();
+    const controller = new AbortController();
+    const request = { key: requestKey, controller, typing, message };
+    active = request;
+    render();
+    log.append(typing);
+    scrollToEnd();
+
     try {
       const result = await sendChat(
-        { challengeId, challenge: context, message: message.trim(), history },
+        { challengeId: requestKey, message, history },
         {
           signal: controller.signal,
-          onToken: (text) => {
-            const bubble = typing.querySelector('.chat-message__bubble');
-            if (bubble) { bubble.classList.remove('typing'); bubble.textContent = text; }
-            scrollToEnd();
+          onProgress: (cumulative) => {
+            if (request.typing.isConnected) {
+              bubble.classList.remove('typing');
+              bubble.textContent = cumulative;
+              scrollToEnd();
+            }
           },
         },
       );
-      typing.remove();
-      const reply = result.reply || 'Il backend non ha restituito alcuna risposta.';
-      store.appendMessage(challengeId, { role: 'assistant', content: reply, createdAt: new Date().toISOString() });
-      log.append(messageNode('assistant', reply, new Date().toISOString()));
-      onConversationChange?.();
-      scrollToEnd();
-    } catch (error) {
-      typing.remove();
-      if (error?.name === 'AbortError') return;
-      const text = error instanceof ApiError
-        ? error.message
-        : 'Non è stato possibile contattare l’assistente. Controlla la connessione e riprova.';
-      showError(text, Boolean(lastRequest));
-    } finally {
-      busy = false;
-      controller = null;
-      if (challenge?.id === challengeId) {
-        input.disabled = false;
-        sendButton.disabled = !input.value.trim();
-        input.focus();
+      const reply = result.reply || 'Il backend non ha restituito una risposta utilizzabile.';
+      if (active?.controller === controller) {
+        store.appendMessage(requestKey, {
+          role: 'assistant', content: reply, createdAt: new Date().toISOString(),
+        });
+        onConversationChange?.();
       }
+      finalize(request);
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        if (active?.controller === controller) status.textContent = 'Richiesta annullata.';
+      } else {
+        const text = error instanceof ApiError
+          ? error.message
+          : 'Non è stato possibile contattare l’assistente. Controlla la connessione e riprova.';
+        if (active?.controller === controller) showError(text, lastRequests.has(requestKey));
+      }
+      finalize(request);
+      if (error?.name !== 'AbortError' && active === null) status.textContent = 'Richiesta non riuscita.';
     }
   }
 
   form.addEventListener('submit', (event) => {
     event.preventDefault();
-    submit(input.value);
+    if (!active) submit(input.value);
   });
 
   input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    // IME: Invio completa la composizione del carattere, non il messaggio.
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
       event.preventDefault();
-      form.requestSubmit();
+      if (!active) form.requestSubmit();
     }
   });
 
   input.addEventListener('input', () => {
-    sendButton.disabled = !input.value.trim() || busy;
     input.style.height = 'auto';
     input.style.height = `${Math.min(input.scrollHeight, 140)}px`;
+    if (!active) {
+      sendButton.disabled = !input.value.trim();
+      if (!errorBox.hidden) hideError();
+    }
   });
 
+  cancelButton.addEventListener('click', () => active?.controller.abort());
+
   retryButton.addEventListener('click', () => {
-    if (lastRequest) submit(lastRequest.message, { isRetry: true });
+    const message = lastRequests.get(key);
+    if (message) submit(message, { isRetry: true });
   });
 
   clearButton.addEventListener('click', async () => {
-    if (!challenge) return;
-    const accepted = await confirmDialog(`Cancellare la conversazione di "${challenge.title}"? L'operazione non è reversibile.`);
-    if (!accepted) return;
-    controller?.abort();
-    store.clearConversation(challenge.id);
-    lastRequest = null;
+    if (!challenge && mode === 'general') {
+      const okGeneral = await confirmDialog('Cancellare la conversazione generale salvata in questo browser?');
+      if (!okGeneral) return;
+    } else if (challenge) {
+      const okChallenge = await confirmDialog(`Cancellare la conversazione di "${challenge.title}"? L'operazione non è reversibile.`);
+      if (!okChallenge) return;
+    }
+    if (active?.key === key) { active.controller.abort(); active = null; }
+    store.clearConversation(key);
+    lastRequests.delete(key);
     hideError();
     render();
     toast('Conversazione cancellata.');
     onConversationChange?.();
   });
 
+  function switchMode(next) {
+    const target = next === 'challenge' ? 'challenge' : 'general';
+    if (target === 'challenge' && !challenge) {
+      showError('Seleziona una challenge dalla libreria per aprire una conversazione contestuale.');
+      return;
+    }
+    if (target === mode) return;
+    if (active) { active.controller.abort(); active = null; }
+    mode = target;
+    key = target === 'challenge' ? challenge.id : GENERAL_CONVERSATION_ID;
+    input.value = '';
+    input.style.height = '';
+    hideError();
+    render();
+  }
+
+  for (const button of modeButtons) {
+    button.addEventListener('click', () => switchMode(button.id === 'mode-general' ? 'general' : 'challenge'));
+    button.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      const next = button.id === 'mode-general' ? 'challenge' : 'general';
+      switchMode(next);
+      modeButtons.find((item) => item.id === (next === 'general' ? 'mode-general' : 'mode-challenge'))?.focus();
+    });
+  }
+
+  render();
+
   return {
     render,
     selectChallenge(next) {
-      controller?.abort();
-      busy = false;
-      lastRequest = null;
+      const id = next?.id || null;
+      if (id === challenge?.id && mode === 'challenge') return;
+      if (active) { active.controller.abort(); active = null; }
       challenge = next || null;
+      if (challenge) {
+        mode = 'challenge';
+        key = challenge.id;
+      } else {
+        mode = 'general';
+        key = GENERAL_CONVERSATION_ID;
+      }
       input.value = '';
       input.style.height = '';
       hideError();
       render();
     },
+    switchMode,
     focus() { if (!input.disabled) input.focus(); },
-    setMode(next) {
-      mode = next;
-      // Non ricostruire la chat mentre una risposta è in corso.
-      if (!busy) render();
-    },
-    get isBusy() { return busy; },
+    setMode(next) { aiMode = next; render(); },
+    get isBusy() { return Boolean(active && active.key === key); },
+    get conversationKey() { return key; },
   };
 }

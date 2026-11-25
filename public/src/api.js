@@ -1,7 +1,9 @@
 /**
- * Client del backend AI. `sendChat` espone già un callback per token:
- * oggi il backend risponde con JSON, ma se in futuro risponderà in SSE
- * l'UI continuerà a funzionare senza modifiche.
+ * Client del backend AI. Il contesto della challenge NON viene inviato:
+ * il server lo ricostruisce da `challengeId` leggendo il catalogo authoritative.
+ *
+ * `onProgress` (o il suo alias storico `onToken`) riceve sempre la risposta
+ * CUMULATIVA, non il delta del singolo token, sia con JSON sia con SSE.
  */
 
 export class ApiError extends Error {
@@ -26,13 +28,13 @@ export async function fetchAssistantStatus(signal) {
   return response.json();
 }
 
-async function readEventStream(response, onToken) {
+async function readEventStream(response, onProgress) {
   const reader = response.body?.getReader();
   if (!reader) throw new ApiError('Streaming non disponibile.', response.status);
   const decoder = new TextDecoder();
   let buffer = '';
   let reply = '';
-  let mode = 'ai';
+  let result = { mode: 'ai', model: undefined, challengeId: undefined };
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -43,31 +45,39 @@ async function readEventStream(response, onToken) {
       if (!line.startsWith('data:')) continue;
       try {
         const event = JSON.parse(line.slice(5).trim());
-        if (event.token) { reply += event.token; onToken?.(reply); }
-        if (event.mode) mode = event.mode;
+        if (event.token) { reply += event.token; onProgress?.(reply); }
+        if (event.mode) result.mode = event.mode;
+        if (event.model) result.model = event.model;
+        if (event.challengeId) result.challengeId = event.challengeId;
         if (event.error) throw new ApiError(event.error, response.status);
       } catch (error) {
         if (error instanceof ApiError) throw error;
       }
     }
   }
-  return { reply, mode };
+  return { ...result, reply };
 }
 
-export async function sendChat({ challengeId, challenge, message, history }, { onToken, signal } = {}) {
+export async function sendChat({ challengeId, message, history }, { onProgress, onToken, signal } = {}) {
+  const report = onProgress || onToken;
   const response = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
     signal,
-    body: JSON.stringify({ challengeId, challenge, message, history }),
+    body: JSON.stringify({ challengeId, message, history }),
   });
   if (!response.ok) throw await readError(response);
 
   const type = response.headers.get('content-type') || '';
-  if (type.includes('text/event-stream')) return readEventStream(response, onToken);
+  if (type.includes('text/event-stream')) return readEventStream(response, report);
 
   const data = await response.json();
   if (typeof data?.reply !== 'string') throw new ApiError('Risposta del backend non valida.', response.status);
-  onToken?.(data.reply);
-  return { reply: data.reply, mode: data.mode || 'ai', model: data.model };
+  report?.(data.reply);
+  return {
+    reply: data.reply,
+    mode: data.mode || 'ai',
+    model: data.model,
+    challengeId: data.challengeId,
+  };
 }
