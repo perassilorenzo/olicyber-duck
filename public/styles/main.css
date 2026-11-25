@@ -284,8 +284,20 @@ html[data-theme="dark"] .tag { color: var(--ink); }
 .tag--difficulty[data-difficulty="Media"] { color: #8a5a00; border-color: #e0bd6e; }
 .tag--difficulty[data-difficulty="Difficile"] { color: var(--red-dark); border-color: rgba(243, 60, 60, .4); }
 html[data-theme="dark"] .tag--difficulty[data-difficulty="Media"] { color: var(--yellow); }
+.provenance-badge {
+  font-size: 10px; font-weight: 800; letter-spacing: .06em;
+  border: 1px solid currentColor; border-radius: 4px; padding: 1px 6px;
+  white-space: nowrap;
+}
+.provenance-badge--demo { color: var(--red-dark); }
+.provenance-badge--unverified { color: #8a5a00; }
+.provenance-badge--verified { color: var(--green); }
+html[data-theme="dark"] .provenance-badge--unverified { color: var(--yellow); }
 .demo-tag { font-size: 10px; font-weight: 800; letter-spacing: .06em; color: var(--red-dark); border: 1px solid currentColor; border-radius: 4px; padding: 1px 6px; }
-.library-footnote { flex: none; margin: 0; padding: 8px 14px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+.library-footnote {
+  flex: none; margin: 0; padding: 8px 14px; border-top: 1px solid var(--border);
+  color: var(--muted); font-size: 11px; display: flex; align-items: center; gap: 8px;
+}
 .empty-list { padding: 24px 12px; text-align: center; color: var(--muted); font-size: 12px; }
 
 /* ---------- Assistant ---------- */
@@ -381,6 +393,7 @@ html[data-theme="dark"] .detail-section__title { color: #8ec2ff; }
 .resource-row a { color: var(--blue-700); font-weight: 600; text-decoration: none; }
 html[data-theme="dark"] .resource-row a { color: #8ec2ff; }
 .resource-row a:hover { text-decoration: underline; }
+.resource-row__text { color: var(--muted); font-size: 12px; }
 
 /* ---------- Dialogs and toast ---------- */
 

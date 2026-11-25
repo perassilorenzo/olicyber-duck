@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { detectForbiddenContent } from './lib/publication-gate.mjs';
+import { safeHttpsUrl } from '../public/src/url.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { values } = parseArgs({
@@ -50,6 +51,7 @@ function hasForbiddenKeys(value) {
 }
 
 const sourceName = 'Dataset pubblico derivato da indici e soluzioni disponibili';
+const safeSourceUrl = (value) => safeHttpsUrl(value);
 const challenges = dataset.challengeCatalog.challenges.map((challenge) => ({
   id: challenge.id,
   originalId: challenge.sourceChallengeId,
@@ -66,7 +68,7 @@ const challenges = dataset.challengeCatalog.challenges.map((challenge) => ({
   publishedAt: null,
   state: null,
   available: true,
-  sourceUrl: challenge.sourceUrl ?? null,
+  sourceUrl: safeSourceUrl(challenge.sourceUrl),
   attachments: [],
   tags: [],
   metadata: {
@@ -88,7 +90,7 @@ const challenges = dataset.challengeCatalog.challenges.map((challenge) => ({
   },
   demo: false,
   source: sourceName,
-  externalUrl: challenge.sourceUrl ?? null,
+  externalUrl: safeSourceUrl(challenge.sourceUrl),
 }));
 
 const serialized = JSON.stringify(challenges);
@@ -147,6 +149,7 @@ const report = {
     'I tag derivati dalle fonti di soluzione non sono stati copiati nel catalogo applicativo.',
     'Il Solution Archive non è stato importato e non è accessibile da frontend o API pubbliche.',
     'La completezza non è verificabile senza un export autorizzato.',
+    'Solo URL HTTPS assoluti sono importati; gli altri schemi vengono scartati e non resi cliccabili.',
     'La repository community non dichiara licenza: non pubblicare o caricare su Cloudflare i suoi contenuti senza autorizzazione.',
   ],
   verifiedAgainstSource: false,

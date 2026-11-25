@@ -4,6 +4,8 @@
  * viene letto né scritto alcun dato locale.
  */
 
+import { safeHttpsUrl } from './url.js';
+
 export const SORT_OPTIONS = [
   { value: 'title-asc', label: 'Titolo (A-Z)' },
   { value: 'title-desc', label: 'Titolo (Z-A)' },
@@ -27,6 +29,12 @@ function normalizeChallenge(raw) {
   const title = asText(raw.title);
   if (!id || !title) return null;
 
+  const provenance = raw.provenance && typeof raw.provenance === 'object' && !Array.isArray(raw.provenance)
+    ? { ...raw.provenance }
+    : {};
+  provenance.sourceUrl = safeHttpsUrl(provenance.sourceUrl);
+  provenance.verified = provenance.verified === true;
+
   return {
     id,
     originalId,
@@ -42,11 +50,15 @@ function normalizeChallenge(raw) {
     publishedAt: asText(raw.publishedAt),
     state: asText(raw.state),
     available: raw.available !== false,
-    sourceUrl: asText(raw.sourceUrl) || asText(raw.externalUrl),
-    attachments: Array.isArray(raw.attachments) ? raw.attachments.filter((item) => item && typeof item === 'object') : [],
+    sourceUrl: safeHttpsUrl(raw.sourceUrl) || safeHttpsUrl(raw.externalUrl),
+    attachments: Array.isArray(raw.attachments)
+      ? raw.attachments
+        .filter((item) => item && typeof item === 'object' && !Array.isArray(item))
+        .map((item) => ({ ...item, url: safeHttpsUrl(item.url) }))
+      : [],
     tags: Array.isArray(raw.tags) ? raw.tags.filter((tag) => typeof tag === 'string' && tag.trim()) : [],
     metadata: raw.metadata && typeof raw.metadata === 'object' && !Array.isArray(raw.metadata) ? raw.metadata : {},
-    provenance: raw.provenance && typeof raw.provenance === 'object' ? raw.provenance : {},
+    provenance,
     demo: raw.demo === true,
     source: asText(raw.source) || '',
   };
@@ -69,6 +81,10 @@ export async function loadCatalog(url = '/data/challenges.json') {
     source: data.source && typeof data.source === 'object' ? data.source : {},
     completeness: data.completeness && typeof data.completeness === 'object' ? data.completeness : {},
   };
+  // Un record non può risultare verificato se il catalogo non lo è.
+  if (meta.source.verified !== true) {
+    for (const challenge of challenges) challenge.provenance.verified = false;
+  }
   return { meta, challenges };
 }
 

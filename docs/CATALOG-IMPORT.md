@@ -7,6 +7,7 @@
 3. L'unica via supported è un **export ottenuto legalmente dall'utente** con il proprio account o un'autorizzazione scritta dei mantenitori.
 4. Le challenge DEMO attuali non sono ufficiali e restano contrassegnate come tali finché non viene importato un export verificato.
 5. Writeup, flag e soluzioni **non entrano** nella libreria né nel contesto dell'assistente.
+6. Vengono accettati **solo URL HTTPS assoluti**: `javascript:`, `data:`, `file:`, `http:`, URL relativi e URL con credenziali incorporate vengono scartati e non resi cliccabili.
 
 La ricerca sulle fonti pubbliche e i limiti dell'analisi sono documentati in [`PUBLIC-SOURCES-RESEARCH.md`](PUBLIC-SOURCES-RESEARCH.md).
 
@@ -31,7 +32,7 @@ Campi riconosciuti (opzionali, se non presenti restano `null`):
 | `files[{name,url}]` | `attachments[]` |
 | `author`, `edition`/`event`, `path`, `published_at`/`date`/`created` | campi corrispondenti |
 
-I campi `flag`, `flags`, `solution`, `writeup`, `writeups` vengono ignorati e segnalati in `metadata.ignoredSensitiveFields`. Se il JSON risultante contiene un pattern di flag, l'import si interrompe.
+I campi `flag`, `flags`, `solution`, `writeup`, `writeups` vengono ignorati e segnalati in `metadata.ignoredSensitiveFields`. Se il JSON risultante contiene un pattern di flag, l'import si interrompe. La validazione URL è applicata a `url`, `files[{url}]` e all'URL di provenienza: un documento con URL non valido conserva l'eventuale nome del allegato ma non produce link cliccabili.
 
 ## Uso
 
@@ -58,6 +59,7 @@ L'importatore:
 - non legge token, cookie, sessioni o variabili d'ambiente;
 - deduplica per `originalId` (poi per titolo) e conta i duplicati;
 - converte tag HTML essenziali nel testo;
+- scarta URL non HTTPS senza sostituirli con URL generati;
 - genera il report con conteggi, categorie, limiti e `verifiedAgainstSource`.
 
 ## Stati del catalogo
@@ -70,7 +72,7 @@ L'importatore:
 | Export importato con conteggio diverso | `imported-unverified` | `false` |
 | Dataset derivato da fonti pubbliche | `unverified-derived` | `false` |
 
-Anche con `verified-import`, dichiarare la completezza solo se il totale ufficiale è stato fornito da una fonte autorizzata.
+Anche con `verified-import`, dichiarare la completezza solo se il totale ufficiale è stato fornito da una fonte autorizzata. La verifica riguarda il numero di record importati, non l'autenticità di ogni singolo record: `provenance.recordVerified` resta sempre `false` perché non esiste una verifica per-record automatica. L'autorizzazione all'import non viene dedotta dalla provenienza: serve sempre un export ottenuto legalmente.
 
 ## Import del dataset di ricerca
 
@@ -98,9 +100,14 @@ Ogni challenge conserva:
   "source": "Export admin OliCyber 2026",
   "sourceUrl": "https://training.olicyber.it/challenges/<id>",
   "importedAt": "2026-...",
-  "verified": true
+  "verified": true,
+  "catalogVerified": true,
+  "recordVerified": false,
+  "verificationScope": "catalog-completeness"
 }
 ```
+
+`verified` e `catalogVerified` sono `true` solo quando `imported === expectedTotal` con un totale fornito da fonte autorizzata; altrimenti sono `false`. `sourceUrl` è presente solo se HTTPS valido. Il frontend non promuove un record a `VERIFICATA` quando il catalogo non è verificato o quando `catalogVerified` è `false`.
 
 L'export autorizzato prevale sempre sull'indice pubblico dei writeup. In caso di conflitto (ad esempio l'ID `726` duplicato nel README ufficiale) non inventare dati: segnalare il conflitto nel report e chiedere conferma ufficiale.
 
@@ -117,4 +124,4 @@ curl -s http://localhost:8788/api/status
 node -e "const c=require('./public/data/challenges.json'); console.log(c.status, c.completeness.imported, c.completeness.verifiedAgainstSource)"
 ```
 
-La UI deve mostrare il badge DEMO solo per record con `demo: true` e i link esterni solo quando `sourceUrl` è presente e verificato.
+La UI mostra il badge `DEMO` per i cataloghi/record dimostrativi, `VERIFICATA` solo per provenienza verificata e `NON VERIFICATA` in tutti gli altri casi. I link esterni sono cliccabili solo quando l'URL è HTTPS valido; gli URL non HTTPS restano testo non cliccabile.

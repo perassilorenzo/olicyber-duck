@@ -8,6 +8,7 @@ import { createDetails } from './details.js';
 import { createAssistant } from './assistant.js';
 import { createPanels } from './panels.js';
 import { fetchAssistantStatus } from './api.js';
+import { catalogProvenance } from './provenance.js';
 
 const store = new LocalStore();
 let catalog = { meta: { source: {}, completeness: {} }, challenges: [] };
@@ -24,12 +25,18 @@ function applyTheme(theme) {
   byId('theme-select').value = theme;
 }
 
+function updateWidthLabels(width, assistantPercent) {
+  const roundedWidth = Math.round(width);
+  byId('panel-width-value').textContent = `${roundedWidth}%`;
+  byId('assistant-width-value').textContent = `${Math.round(assistantPercent)}%`;
+  byId('panel-width-setting').value = String(roundedWidth);
+}
+
 function applyPreferenceUI() {
+  if (!panels) return;
   const { panelWidth, activePanel } = store.state.preferences;
-  byId('panel-width-value').textContent = `${panelWidth}%`;
-  byId('assistant-width-value').textContent = `${100 - panelWidth}%`;
-  byId('panel-width-setting').value = String(panelWidth);
-  if (panels && !panels.isCompact()) panels.setView(activePanel, { persist: false });
+  panels.apply(panelWidth, { persist: false });
+  if (!panels.isCompact()) panels.setView(activePanel, { persist: false });
 }
 
 function selectChallenge(challenge) {
@@ -103,10 +110,6 @@ function setupSettings() {
     const ok = await confirmDialog('Cancellare tutti i dati locali (stati, conversazioni, preferenze)?');
     if (!ok) return;
     store.clearAll();
-    applyTheme(store.state.preferences.theme);
-    panels.apply(store.state.preferences.panelWidth, { persist: false });
-    panels.setView(store.state.preferences.activePanel, { persist: false });
-    library.syncFilters();
     assistant.selectChallenge(getSelectedChallenge());
     assistant.switchMode('general');
     details.render();
@@ -124,7 +127,7 @@ async function init() {
   setupDialogs();
   setupSettings();
 
-  panels = createPanels({ store });
+  panels = createPanels({ store, onWidthChange: updateWidthLabels });
   panels.apply(store.state.preferences.panelWidth, { persist: false });
   panels.setView(store.state.preferences.activePanel, { persist: false });
   applyPreferenceUI();
@@ -147,15 +150,23 @@ async function init() {
     onAsk: askAssistant,
   });
 
+  function renderCatalogProvenance(meta, challenges) {
+    const provenance = catalogProvenance(meta, challenges);
+    const badge = byId('catalog-provenance');
+    badge.className = `provenance-badge provenance-badge--${provenance.kind}`;
+    badge.textContent = provenance.label;
+    const name = meta?.source?.name || 'Catalogo';
+    byId('catalog-source-note').textContent = meta?.source?.note
+      ? `${name} — ${meta.source.note}`
+      : `${name} — provenienza: ${provenance.label}.`;
+  }
+
   try {
     catalog = await loadCatalog();
-    const meta = catalog.meta;
-    const verified = meta.source.verified === true;
-    byId('library-footnote').textContent = meta.source.note
-      ? `${meta.source.name} — ${meta.source.note}`
-      : `${meta.source.name || 'Catalogo'} — provenienza: ${verified ? 'verificata' : 'non verificata'}.`;
+    renderCatalogProvenance(catalog.meta, catalog.challenges);
   } catch (error) {
-    byId('library-footnote').textContent = `Catalogo non disponibile: ${error.message}`;
+    renderCatalogProvenance({}, []);
+    byId('catalog-source-note').textContent = `Catalogo non disponibile: ${error.message}`;
     toast('Impossibile caricare il catalogo delle challenge.', 5000);
   }
 
@@ -166,10 +177,26 @@ async function init() {
     onOpenDetails: openDetails,
   });
 
-  store.subscribe(() => {
-    library.render();
-    details.render();
-    applyPreferenceUI();
+  let lastNotifiedState = store.state;
+  store.subscribe((state) => {
+    const previous = lastNotifiedState;
+    lastNotifiedState = state;
+    if (previous === state) return;
+
+    const filtersChanged = JSON.stringify(previous.preferences.filters)
+      !== JSON.stringify(state.preferences.filters);
+    const statusesChanged = JSON.stringify(previous.statuses) !== JSON.stringify(state.statuses);
+    const selectionChanged = previous.selectedChallengeId !== state.selectedChallengeId;
+    const themeChanged = previous.preferences.theme !== state.preferences.theme;
+    const layoutChanged = previous.preferences.panelWidth !== state.preferences.panelWidth
+      || previous.preferences.activePanel !== state.preferences.activePanel;
+
+    if (filtersChanged) library.syncFilters();
+    else if (statusesChanged || selectionChanged) library.render();
+
+    if (statusesChanged || selectionChanged) details.render();
+    if (themeChanged) applyTheme(state.preferences.theme);
+    if (layoutChanged) applyPreferenceUI();
   });
 
   assistant.selectChallenge(getSelectedChallenge());

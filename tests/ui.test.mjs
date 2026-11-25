@@ -83,6 +83,9 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
   assert.equal(doc.getElementById('mode-general').getAttribute('aria-checked'), 'true');
   assert.equal(doc.getElementById('chat-input').disabled, false);
   assert.match(doc.getElementById('chat-input').placeholder, /hint/);
+  assert.equal(doc.getElementById('catalog-provenance').textContent, 'DEMO');
+  assert.equal(doc.querySelector('#challenge-items .provenance-badge').textContent, 'DEMO');
+  const list = doc.getElementById('challenge-list');
 
   // Larghezza persistita.
   const slider = doc.getElementById('panel-width-setting');
@@ -95,18 +98,40 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
   const saved = JSON.parse(window.localStorage.getItem('oliduck:state'));
   assert.equal(saved.preferences.panelWidth, 55);
 
-  // Filtri derivati dai dati e ordinamento.
+  // Trascinamento: etichette aggiornate durante il movimento e larghezza effettiva.
+  const workspace = doc.getElementById('main-content');
+  Object.defineProperty(workspace, 'clientWidth', { configurable: true, value: 1000 });
+  Object.defineProperty(workspace, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => ({ left: 0, width: 1000 }),
+  });
+  const splitter = doc.getElementById('splitter');
+  splitter.dispatchEvent(new window.MouseEvent('pointerdown', {
+    bubbles: true, cancelable: true, clientX: 400,
+  }));
+  splitter.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: 600 }));
+  assert.equal(doc.getElementById('panel-width-value').textContent, '60%');
+  assert.equal(doc.getElementById('assistant-width-value').textContent, '39%');
+  splitter.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true }));
+  const dragged = JSON.parse(window.localStorage.getItem('oliduck:state'));
+  assert.equal(dragged.preferences.panelWidth, 60);
+
+  // Filtri derivati dai dati: il cambio filtro azzera lo scroll.
+  list.scrollTop = 120;
   doc.getElementById('search-input').value = 'query string';
   doc.getElementById('search-input').dispatchEvent(new window.Event('input', { bubbles: true }));
   await wait();
   assert.equal(doc.querySelectorAll('#challenge-list .challenge-item').length, 1);
+  assert.equal(list.scrollTop, 0);
   doc.getElementById('clear-filters').click();
   await wait();
   assert.equal(doc.querySelectorAll('#challenge-list .challenge-item').length, 7);
 
-  // Selezione e conversazione contestuale.
+  // Selezione e conversazione contestuale: lo scroll non viene azzerato.
+  list.scrollTop = 150;
   doc.querySelector('#challenge-list .challenge-item[data-id="demo-web-01"] .challenge-item__main').click();
   await wait();
+  assert.equal(list.scrollTop, 150);
   assert.equal(doc.getElementById('mode-challenge').getAttribute('aria-checked'), 'true');
   assert.match(doc.getElementById('assistant-context-label').textContent, /Il parametro dimenticato/);
   assert.equal(doc.getElementById('chat-input').disabled, false);
@@ -122,15 +147,41 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
   assert.equal('challenge' in payloads.at(-1), false);
   assert.equal(payloads.at(-1).history.length, 0);
 
-  // Dettagli in overlay: la chat resta nel secondo pannello.
+  // Dettagli in overlay: la chat resta nel secondo pannello e lo sfondo è inerte.
   doc.querySelector('#challenge-list .challenge-item[data-id="demo-web-01"] .challenge-item__details').click();
   await wait();
   assert.equal(doc.getElementById('drawer-layer').hidden, false);
   assert.equal(doc.getElementById('details-drawer').getAttribute('aria-hidden'), 'false');
   assert.equal(doc.getElementById('details-title').textContent, 'Il parametro dimenticato');
-  doc.getElementById('close-details').click();
+  assert.equal(workspace.hasAttribute('inert'), true);
+  assert.equal(doc.activeElement.id, 'close-details');
+
+  // Focus trap: Tab e Shift+Tab restano dentro il drawer.
+  doc.activeElement.dispatchEvent(new window.KeyboardEvent('keydown', {
+    key: 'Tab', shiftKey: true, bubbles: true, cancelable: true,
+  }));
+  assert.equal(doc.activeElement.id, 'ask-from-details');
+  doc.activeElement.dispatchEvent(new window.KeyboardEvent('keydown', {
+    key: 'Tab', bubbles: true, cancelable: true,
+  }));
+  assert.equal(doc.activeElement.id, 'close-details');
+
+  // Cambio stato: lo scroll della lista e lo sfondo inerte restano invariati.
+  const cycle = doc.getElementById('cycle-status');
+  cycle.focus();
+  cycle.click();
+  await wait();
+  assert.equal(list.scrollTop, 150);
+  assert.equal(doc.activeElement.id, 'cycle-status');
+  assert.equal(workspace.hasAttribute('inert'), true);
+
+  doc.activeElement.dispatchEvent(new window.KeyboardEvent('keydown', {
+    key: 'Escape', bubbles: true, cancelable: true,
+  }));
   await wait();
   assert.equal(doc.getElementById('drawer-layer').hidden, true);
+  assert.equal(workspace.hasAttribute('inert'), false);
+  assert.equal(doc.getElementById('details-drawer').contains(doc.activeElement), false);
 
   // Modalità generale: conversazione separata e streaming SSE cumulativo.
   chatHandler = async () => sseResponse(['Principio ', 'generale.']);
@@ -161,6 +212,26 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
   assert.equal(doc.getElementById('chat-error').hidden, false);
   assert.match(doc.getElementById('chat-error-message').textContent, /Errore simulato dal server/);
   assert.equal(doc.getElementById('retry-chat').hidden, false);
+
+  // Annullamento esplicito: feedback stabile dopo il render finale.
+  chatHandler = async (_payload, options) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(jsonResponse({ reply: 'RISPOSTA_ANNULLATA', mode: 'demo' })), 250);
+    options.signal.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(new DOMException('Aborted', 'AbortError'));
+    });
+  });
+  doc.getElementById('chat-input').value = 'Richiesta da annullare';
+  doc.getElementById('chat-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  await wait(20);
+  assert.equal(doc.getElementById('cancel-chat').hidden, false);
+  doc.getElementById('cancel-chat').click();
+  await wait(40);
+  assert.equal(doc.getElementById('chat-status').textContent, 'Richiesta annullata.');
+  assert.equal(doc.getElementById('cancel-chat').hidden, true);
+  assert.equal(doc.getElementById('chat-input').disabled, false);
+  bubbles = [...doc.querySelectorAll('.chat-message__bubble')].map((node) => node.textContent);
+  assert.equal(bubbles.includes('RISPOSTA_ANNULLATA'), false);
 
   // Cambio modalità durante una richiesta lenta: la risposta vecchia non entra nella chat nuova.
   chatHandler = async (payload, options) => new Promise((resolve, reject) => {

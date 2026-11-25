@@ -34,6 +34,7 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
   let key = challenge ? challenge.id : GENERAL_CONVERSATION_ID;
   let active = null;
   let aiMode = null;
+  let statusMessage = '';
   const lastRequests = new Map();
 
   function messageNode(message) {
@@ -94,7 +95,7 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
     sendButton.disabled = busyHere || !input.value.trim();
     cancelButton.hidden = !busyHere;
     input.disabled = busyHere;
-    status.textContent = busyHere ? 'OliDuck sta rispondendo…' : '';
+    status.textContent = busyHere ? 'OliDuck sta rispondendo…' : statusMessage;
     scrollToEnd();
   }
 
@@ -107,6 +108,7 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
   async function submit(rawMessage, { isRetry = false } = {}) {
     const message = String(rawMessage || '').trim();
     if (!message || active) return;
+    statusMessage = '';
     const requestKey = key;
     if (requestKey !== GENERAL_CONVERSATION_ID && !challenge) {
       showError('Seleziona una challenge per usare la modalità contestuale.');
@@ -168,15 +170,17 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
       finalize(request);
     } catch (error) {
       if (error?.name === 'AbortError') {
-        if (active?.controller === controller) status.textContent = 'Richiesta annullata.';
+        if (active?.controller === controller) statusMessage = 'Richiesta annullata.';
       } else {
         const text = error instanceof ApiError
           ? error.message
           : 'Non è stato possibile contattare l’assistente. Controlla la connessione e riprova.';
-        if (active?.controller === controller) showError(text, lastRequests.has(requestKey));
+        if (active?.controller === controller) {
+          showError(text, lastRequests.has(requestKey));
+          statusMessage = 'Richiesta non riuscita.';
+        }
       }
       finalize(request);
-      if (error?.name !== 'AbortError' && active === null) status.textContent = 'Richiesta non riuscita.';
     }
   }
 
@@ -220,6 +224,7 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
     if (active?.key === key) { active.controller.abort(); active = null; }
     store.clearConversation(key);
     lastRequests.delete(key);
+    statusMessage = '';
     hideError();
     render();
     toast('Conversazione cancellata.');
@@ -234,6 +239,7 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
     }
     if (target === mode) return;
     if (active) { active.controller.abort(); active = null; }
+    statusMessage = '';
     mode = target;
     key = target === 'challenge' ? challenge.id : GENERAL_CONVERSATION_ID;
     input.value = '';
@@ -261,6 +267,7 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
       const id = next?.id || null;
       if (id === challenge?.id && mode === 'challenge') return;
       if (active) { active.controller.abort(); active = null; }
+      statusMessage = '';
       challenge = next || null;
       if (challenge) {
         mode = 'challenge';

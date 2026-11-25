@@ -113,7 +113,10 @@
         <div class="library-list" id="challenge-list" role="list" aria-label="Elenco challenge" tabindex="0">
           <div class="library-items" id="challenge-items"></div>
         </div>
-        <p class="library-footnote" id="library-footnote">Catalogo dimostrativo — nessuna challenge ufficiale.</p>
+        <div class="library-footnote" id="library-footnote">
+          <span class="provenance-badge" id="catalog-provenance" aria-label="Provenienza del catalogo">…</span>
+          <span id="catalog-source-note">Caricamento del catalogo…</span>
+        </div>
       </section>
 
       <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" aria-label="Ridimensiona i pannelli" aria-valuemin="22" aria-valuemax="72" aria-valuenow="40" tabindex="0" title="Trascina per ridimensionare · doppio clic per ripristinare">
@@ -187,7 +190,7 @@
 
     <!-- Dettagli in overlay: non è una terza colonna e non blocca la chat. -->
     <div class="drawer-layer" id="drawer-layer" hidden>
-      <button type="button" class="drawer-backdrop" id="details-backdrop" aria-label="Chiudi i dettagli"></button>
+      <button type="button" class="drawer-backdrop" id="details-backdrop" aria-label="Chiudi i dettagli" tabindex="-1"></button>
       <aside class="drawer" id="details-drawer" role="dialog" aria-modal="true" aria-labelledby="details-title" aria-hidden="true" inert>
         <div class="drawer__header">
           <h2 id="details-title">Dettagli challenge</h2>

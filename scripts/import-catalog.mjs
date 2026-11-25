@@ -13,6 +13,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
+import { safeHttpsUrl } from '../public/src/url.js';
 
 const { values } = parseArgs({
   options: {
@@ -70,7 +71,9 @@ function attachmentsOf(record) {
   return files
     .map((file) => {
       const name = typeof file === 'string' ? file : file?.name ?? file?.filename;
-      const url = typeof file === 'object' ? file?.url ?? file?.downloadUrl ?? null : null;
+      const rawUrl = typeof file === 'object' ? file?.url ?? file?.downloadUrl ?? null : null;
+      // URL non HTTPS vengono scartati: mai resi cliccabili nell'interfaccia.
+      const url = safeHttpsUrl(rawUrl);
       return name ? { name: String(name).slice(0, 160), url } : null;
     })
     .filter(Boolean)
@@ -85,9 +88,13 @@ function toChallenge({ category, record }) {
 
   const state = text(record.state) ?? null;
   const available = state ? !['hidden', 'disabled', 'archived'].includes(state.toLowerCase()) : true;
-  const sourceUrl = text(record.url) ?? (originalId !== null
-    ? `${values.portal.replace(/\/$/, '')}/challenges/${encodeURIComponent(originalId)}`
-    : null);
+  const rawUrl = text(record.url);
+  // Se un URL è stato fornito ma non è HTTPS, non viene sostituito né reso cliccabile.
+  const sourceUrl = rawUrl !== null
+    ? safeHttpsUrl(rawUrl)
+    : (originalId !== null
+      ? safeHttpsUrl(`${values.portal.replace(/\/$/, '')}/challenges/${encodeURIComponent(originalId)}`)
+      : null);
 
   const sensitive = ['flag', 'flags', 'solution', 'writeup', 'writeups'].filter((key) => key in record);
 
@@ -114,7 +121,16 @@ function toChallenge({ category, record }) {
       hintsCount: Array.isArray(record.hints) ? record.hints.length : null,
       ignoredSensitiveFields: sensitive,
     },
-    provenance: { source: values['source-name'], importedAt: new Date().toISOString(), verified: true },
+    provenance: {
+      source: values['source-name'],
+      sourceUrl: safeHttpsUrl(rawUrl),
+      importedAt: new Date().toISOString(),
+      // Valori definitivi dopo il calcolo della completezza del catalogo.
+      verified: false,
+      catalogVerified: false,
+      recordVerified: false,
+      verificationScope: 'catalog-completeness',
+    },
     demo: false,
     source: values['source-name'],
     externalUrl: sourceUrl,
@@ -140,7 +156,12 @@ const fields = ['title', 'description', 'statement', 'category', 'sourceUrl'];
 const missing = challenges.filter((challenge) => fields.some((field) => !challenge[field])).length;
 const unavailable = challenges.filter((challenge) => !challenge.available).length;
 const expected = values['expected-total'] === undefined ? null : Number(values['expected-total']);
-const verified = expected !== null && expected === challenges.length;
+// La verifica riguarda la completezza del catalogo, non ogni singolo record.
+const catalogVerified = expected !== null && expected === challenges.length;
+for (const challenge of challenges) {
+  challenge.provenance.verified = catalogVerified;
+  challenge.provenance.catalogVerified = catalogVerified;
+}
 const categories = {};
 for (const challenge of challenges) {
   const name = challenge.category || '(non categorizzata)';
@@ -150,14 +171,14 @@ for (const challenge of challenges) {
 const generatedAt = new Date().toISOString();
 const catalog = {
   schemaVersion: 2,
-  status: verified ? 'verified-import' : 'imported-unverified',
+  status: catalogVerified ? 'verified-import' : 'imported-unverified',
   source: {
     name: values['source-name'],
     portal: values.portal,
     endpointObserved: '/api/challenges (autenticazione richiesta)',
     authorizedExportUsed: true,
     importedAt: generatedAt,
-    verified,
+    verified: catalogVerified,
   },
   completeness: {
     expectedTotal: expected,
@@ -166,7 +187,7 @@ const catalog = {
     duplicates,
     missingFields: missing,
     unavailable,
-    verifiedAgainstSource: verified,
+    verifiedAgainstSource: catalogVerified,
     report: '/data/import-report.json',
   },
   challenges,
@@ -196,13 +217,15 @@ const report = {
   limitations: [
     'L\'import richiede un export ottenuto con autorizzazione dall\'utente.',
     'Nessuna credenziale, cookie o sessione è stata letta o salvata dall\'importatore.',
+    'Solo URL HTTPS assoluti sono importati; gli altri schemi vengono scartati e non resi cliccabili.',
+    'La verifica del singolo record non è automatica: provenance.verified riflette solo la completezza del catalogo.',
     expected === null
       ? 'Non è stato fornito il numero totale ufficiale: la completezza non è verificabile.'
-      : verified
+      : catalogVerified
         ? 'Il numero di record importati corrisponde al totale ufficiale fornito.'
         : `Il numero importato (${challenges.length}) non corrisponde al totale fornito (${expected}).`,
   ],
-  verifiedAgainstSource: verified,
+  verifiedAgainstSource: catalogVerified,
 };
 writeFileSync(values.report, `${JSON.stringify(report, null, 2)}\n`);
 

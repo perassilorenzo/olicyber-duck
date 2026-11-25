@@ -4,12 +4,12 @@ import { byId, toast } from './utils.js';
 import {
   DEFAULT_PANEL_WIDTH, MIN_PANEL_WIDTH, MAX_PANEL_WIDTH,
 } from './store.js';
+import { effectiveAssistantPercent, SPLITTER_PX } from './layout.js';
 
 const MIN_LIBRARY_PX = 320;
 const MIN_ASSISTANT_PX = 380;
-const SPLITTER_PX = 12;
 
-export function createPanels({ store }) {
+export function createPanels({ store, onWidthChange }) {
   const workspace = byId('main-content');
   const splitter = byId('splitter');
   const range = byId('panel-width-setting');
@@ -43,6 +43,7 @@ export function createPanels({ store }) {
     workspace.style.setProperty('--library-width', `${current}%`);
     splitter.setAttribute('aria-valuenow', String(current));
     if (range) range.value = String(current);
+    onWidthChange?.(current, effectiveAssistantPercent(current, metrics().inner, SPLITTER_PX));
     if (persist) store.setPreference('panelWidth', current);
     return current;
   }
@@ -148,6 +149,7 @@ export function createPanels({ store }) {
     reflow: () => apply(current, { persist: false }),
     isCompact,
     get width() { return current; },
+    get assistantPercent() { return effectiveAssistantPercent(current, metrics().inner, SPLITTER_PX); },
     get view() { return workspace.dataset.view; },
   };
 }

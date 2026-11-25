@@ -1,6 +1,8 @@
 /** Drawer dei dettagli: nessuna terza colonna permanente, la chat resta disponibile. */
 
 import { byId, toast } from './utils.js';
+import { safeHttpsUrl } from './url.js';
+import { challengeProvenance } from './provenance.js';
 
 const STATUS_LABELS = { todo: 'Da fare', 'in-progress': 'In corso', completed: 'Completata' };
 const NEXT_STATUS = { todo: 'in-progress', 'in-progress': 'completed', completed: 'todo' };
@@ -14,8 +16,10 @@ function element(tag, className, text) {
 }
 
 function link(url, label) {
+  const safeUrl = safeHttpsUrl(url);
+  if (!safeUrl) return element('span', 'resource-row__text', `${label} (URL non disponibile)`);
   const anchor = element('a', null, label);
-  anchor.href = url;
+  anchor.href = safeUrl;
   anchor.target = '_blank';
   anchor.rel = 'noopener noreferrer';
   return anchor;
@@ -27,7 +31,20 @@ export function createDetails({ store, getChallenge, onAsk }) {
   const body = byId('details-body');
   const close = byId('close-details');
   const backdrop = byId('details-backdrop');
+  const background = [...document.body.children].filter((element) => element !== layer && element.id !== 'toast');
   let lastFocus = null;
+
+  function setBackgroundInert(value) {
+    for (const element of background) {
+      if (value) element.setAttribute('inert', '');
+      else element.removeAttribute('inert');
+    }
+  }
+
+  function focusableInDrawer() {
+    return [...drawer.querySelectorAll('button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')]
+      .filter((element) => element.isConnected && !element.hasAttribute('inert'));
+  }
 
   function section(title) {
     const wrap = element('section', 'detail-section');
@@ -43,12 +60,14 @@ export function createDetails({ store, getChallenge, onAsk }) {
 
   function render() {
     const challenge = getChallenge();
+    const restoreStatusFocus = document.activeElement?.id === 'cycle-status';
     body.replaceChildren();
     if (!challenge) {
       closeDrawer();
       return;
     }
     byId('details-title').textContent = challenge.title;
+    const provenance = challengeProvenance(challenge);
 
     const badges = element('div', 'badges');
     for (const key of ['category', 'difficulty', 'edition', 'path']) {
@@ -56,7 +75,11 @@ export function createDetails({ store, getChallenge, onAsk }) {
     }
     const top = element('div', 'challenge-detail__top');
     top.append(badges);
-    if (challenge.demo) top.append(element('span', 'demo-tag', 'DEMO'));
+    top.append(element(
+      'span',
+      `provenance-badge provenance-badge--${provenance.kind}`,
+      provenance.label,
+    ));
     body.append(top);
     body.append(element('h3', 'challenge-detail__title', challenge.title));
     if (challenge.description) body.append(element('p', 'challenge-detail__description', challenge.description));
@@ -69,6 +92,7 @@ export function createDetails({ store, getChallenge, onAsk }) {
     dot.setAttribute('aria-hidden', 'true');
     info.append(dot, element('span', null, `Stato: ${STATUS_LABELS[status]}`));
     const cycle = element('button', 'btn btn--outline btn--sm', NEXT_LABEL[status]);
+    cycle.id = 'cycle-status';
     cycle.type = 'button';
     cycle.addEventListener('click', () => {
       const next = NEXT_STATUS[store.getStatus(challenge.id)] || 'todo';
@@ -93,6 +117,7 @@ export function createDetails({ store, getChallenge, onAsk }) {
 
     const facts = section('Informazioni');
     const rows = [
+      ['Provenienza', provenance.label],
       ['ID originale', challenge.originalId],
       ['Punteggio', challenge.score],
       ['Autore', challenge.author],
@@ -135,9 +160,11 @@ export function createDetails({ store, getChallenge, onAsk }) {
     body.append(resources);
 
     const ask = element('button', 'btn btn--primary btn--sm', 'Chiedi a OliDuck');
+    ask.id = 'ask-from-details';
     ask.type = 'button';
     ask.addEventListener('click', () => { closeDrawer(); onAsk?.(); });
     body.append(ask);
+    if (restoreStatusFocus) cycle.focus({ preventScroll: true });
   }
 
   function openDrawer() {
@@ -146,6 +173,7 @@ export function createDetails({ store, getChallenge, onAsk }) {
     drawer.classList.add('is-open');
     drawer.setAttribute('aria-hidden', 'false');
     drawer.removeAttribute('inert');
+    setBackgroundInert(true);
     close.focus();
   }
 
@@ -155,6 +183,7 @@ export function createDetails({ store, getChallenge, onAsk }) {
     drawer.setAttribute('aria-hidden', 'true');
     drawer.setAttribute('inert', '');
     layer.hidden = true;
+    setBackgroundInert(false);
     if (lastFocus?.isConnected) lastFocus.focus({ preventScroll: true });
     lastFocus = null;
   }
@@ -162,7 +191,27 @@ export function createDetails({ store, getChallenge, onAsk }) {
   close.addEventListener('click', closeDrawer);
   backdrop?.addEventListener('click', closeDrawer);
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && drawer.classList.contains('is-open')) closeDrawer();
+    if (!drawer.classList.contains('is-open')) return;
+    if (event.key === 'Escape') {
+      closeDrawer();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = focusableInDrawer();
+    if (!focusable.length) {
+      event.preventDefault();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const inside = drawer.contains(document.activeElement);
+    if (event.shiftKey && (!inside || document.activeElement === first)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (!inside || document.activeElement === last)) {
+      event.preventDefault();
+      first.focus();
+    }
   });
   drawer.setAttribute('aria-hidden', 'true');
   drawer.setAttribute('inert', '');

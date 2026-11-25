@@ -47,6 +47,52 @@ test('loadCatalog richiede schema v2 e normalizza i record', async () => {
   }
 });
 
+test('loadCatalog normalizza URL non HTTPS e non promuove record non verificati', async () => {
+  const originalFetch = globalThis.fetch;
+  const fixture = {
+    schemaVersion: 2,
+    status: 'imported-unverified',
+    source: { name: 'Export di test', verified: false },
+    completeness: {},
+    challenges: [{
+      id: 'test-1',
+      title: 'Record con URL non sicuri',
+      sourceUrl: 'javascript:alert(1)',
+      externalUrl: 'data:text/html;base64,PHNjcmlwdD4=',
+      attachments: [
+        { name: 'locale', url: 'file:///etc/passwd' },
+        { name: 'remoto', url: 'https://example.invalid/file' },
+      ],
+      provenance: {
+        source: 'Export di test',
+        sourceUrl: 'javascript:alert(1)',
+        verified: true,
+        catalogVerified: true,
+      },
+    }],
+  };
+  try {
+    globalThis.fetch = async () => ({ ok: true, json: async () => fixture });
+    const loaded = await loadCatalog();
+    const challenge = loaded.challenges[0];
+    assert.equal(challenge.sourceUrl, null);
+    assert.equal(challenge.provenance.sourceUrl, null);
+    assert.equal(challenge.provenance.verified, false);
+    assert.deepEqual(challenge.attachments.map((item) => item.url), [
+      null, 'https://example.invalid/file',
+    ]);
+
+    fixture.source.verified = true;
+    fixture.status = 'verified-import';
+    globalThis.fetch = async () => ({ ok: true, json: async () => fixture });
+    const trusted = await loadCatalog();
+    assert.equal(trusted.challenges[0].provenance.verified, true);
+    assert.equal(trusted.challenges[0].sourceUrl, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('le facet sono derivate dai soli valori presenti nei dati', () => {
   const facets = deriveFacets(catalog.challenges);
   assert.deepEqual(facets.difficulties, ['Difficile', 'Facile', 'Media']);
