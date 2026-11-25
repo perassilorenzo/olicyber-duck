@@ -4,21 +4,25 @@ export const MAX_BODY_BYTES = 16_000;
 export const MAX_MESSAGE_CHARS = 4_000;
 export const MAX_HISTORY_MESSAGES = 12;
 export const MAX_HISTORY_CHARS = 8_000;
-export const MAX_CONTEXT_CHARS = 6_000;
 export const ALLOWED_ROLES = new Set(['user', 'assistant']);
+export const GENERAL_CHALLENGE_ID = 'general';
 
 const encoder = new TextEncoder();
+const bytes = (value) => encoder.encode(value).length;
 
-function clean(value, max) {
-  return typeof value === 'string' ? value.trim().slice(0, max) : '';
+function clean(value, maxChars) {
+  return typeof value === 'string' ? value.trim().slice(0, maxChars) : '';
 }
 
 /**
+ * Il contesto della challenge NON è accettato dal client: viene ricostruito
+ * lato server da challengeId. Il campo `challenge` viene ignorato.
+ *
  * @returns {{ok: true, value: object} | {ok: false, error: string}}
  */
-export function parseChatRequest(rawBody, { now = Date.now() } = {}) {
+export function parseChatRequest(rawBody) {
   if (typeof rawBody !== 'string') return { ok: false, error: 'Corpo della richiesta non valido.' };
-  if (encoder.encode(rawBody).length > MAX_BODY_BYTES) {
+  if (bytes(rawBody) > MAX_BODY_BYTES) {
     return { ok: false, error: `Richiesta troppo grande (massimo ${MAX_BODY_BYTES} byte).` };
   }
 
@@ -35,7 +39,7 @@ export function parseChatRequest(rawBody, { now = Date.now() } = {}) {
   if (typeof body.message !== 'string' || body.message.trim().length === 0) {
     return { ok: false, error: 'Inserisci un messaggio.' };
   }
-  if (body.message.length > MAX_MESSAGE_CHARS) {
+  if (body.message.length > MAX_MESSAGE_CHARS || bytes(body.message) > MAX_MESSAGE_CHARS * 2) {
     return { ok: false, error: `Messaggio troppo lungo (massimo ${MAX_MESSAGE_CHARS} caratteri).` };
   }
   const message = body.message.trim();
@@ -45,30 +49,6 @@ export function parseChatRequest(rawBody, { now = Date.now() } = {}) {
     return { ok: false, error: 'Identificativo della challenge non valido.' };
   }
 
-  const rawChallenge = body.challenge;
-  if (!rawChallenge || typeof rawChallenge !== 'object' || Array.isArray(rawChallenge)) {
-    return { ok: false, error: 'Contesto della challenge mancante.' };
-  }
-
-  const challenge = {
-    id: challengeId,
-    title: clean(rawChallenge.title, 160) || 'Challenge senza titolo',
-    category: clean(rawChallenge.category, 80) || 'Non specificata',
-    difficulty: clean(rawChallenge.difficulty, 40) || 'Non specificata',
-    description: clean(rawChallenge.description, 800),
-    statement: clean(rawChallenge.statement, 3000),
-    tags: Array.isArray(rawChallenge.tags)
-      ? rawChallenge.tags.filter((tag) => typeof tag === 'string').slice(0, 12).map((tag) => clean(tag, 60))
-      : [],
-    learningGoals: Array.isArray(rawChallenge.learningGoals)
-      ? rawChallenge.learningGoals.filter((goal) => typeof goal === 'string').slice(0, 8).map((goal) => clean(goal, 160))
-      : [],
-    hintTopics: Array.isArray(rawChallenge.hintTopics)
-      ? rawChallenge.hintTopics.filter((topic) => typeof topic === 'string').slice(0, 8).map((topic) => clean(topic, 120))
-      : [],
-    demo: rawChallenge.demo === true,
-  };
-
   const rawHistory = body.history === undefined ? [] : body.history;
   if (!Array.isArray(rawHistory)) return { ok: false, error: 'Cronologia non valida.' };
   if (rawHistory.length > MAX_HISTORY_MESSAGES) {
@@ -76,7 +56,7 @@ export function parseChatRequest(rawBody, { now = Date.now() } = {}) {
   }
 
   const history = [];
-  let totalChars = 0;
+  let historyBytes = 0;
   for (const item of rawHistory) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) {
       return { ok: false, error: 'Cronologia non valida.' };
@@ -84,15 +64,10 @@ export function parseChatRequest(rawBody, { now = Date.now() } = {}) {
     if (!ALLOWED_ROLES.has(item.role)) return { ok: false, error: 'Ruolo non valido nella cronologia.' };
     const content = clean(item.content, MAX_MESSAGE_CHARS);
     if (!content) continue;
-    totalChars += content.length;
-    if (totalChars > MAX_HISTORY_CHARS) {
-      return { ok: false, error: 'Cronologia troppo estesa.' };
-    }
+    historyBytes += bytes(content);
+    if (historyBytes > MAX_HISTORY_CHARS * 2) return { ok: false, error: 'Cronologia troppo estesa.' };
     history.push({ role: item.role, content });
   }
 
-  const size = encoder.encode(JSON.stringify(challenge)).length;
-  if (size > MAX_CONTEXT_CHARS) return { ok: false, error: 'Contesto della challenge troppo esteso.' };
-
-  return { ok: true, value: { message, challengeId, challenge, history, receivedAt: now } };
+  return { ok: true, value: { message, challengeId, history } };
 }

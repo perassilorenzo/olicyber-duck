@@ -4,13 +4,18 @@ const HEADER = '**[MODALITÀ DEMO — risposta simulata, non generata da un mode
 
 export function demoReply({ challenge, history = [], message }) {
   const attempts = history.filter((item) => item.role === 'user').length + 1;
-  const topics = challenge.hintTopics?.length ? challenge.hintTopics : challenge.tags || [];
+  const general = challenge?.general === true;
+  const topics = challenge?.hintTopics?.length ? challenge.hintTopics : (challenge?.tags || []);
   const topic = topics[Math.min(attempts - 1, Math.max(topics.length - 1, 0))] || 'il testo della challenge';
-  const title = challenge.title || 'questa challenge';
+  const title = challenge?.title || 'questa challenge';
 
   let body;
-  if (attempts === 1) {
-    body = `Hai selezionato "${title}" (${challenge.category}, ${challenge.difficulty}).\n\n`
+  if (general) {
+    body = `Sei in modalità di studio generale sulla cybersecurity (nessuna challenge selezionata).\n\n`
+      + `Per iniziare, dimmi quale concetto vuoi esplorare e cosa ne hai già capito. `
+      + `In modalità AI, OliDuck ti guiderebbe con spiegazioni e hint progressivi, senza sostituire il tuo ragionamento.`;
+  } else if (attempts === 1) {
+    body = `Hai selezionato "${title}" (${challenge.category || 'categoria non indicata'}, ${challenge.difficulty || 'difficoltà non indicata'}).\n\n`
       + `Per iniziare, prova a rispondere a due domande: quali informazioni sono esplicitamente date e cosa devi ottenere? `
       + `Un primo aspetto da osservare è: ${topic}.\n\n`
       + 'Scrivimi il tuo ragionamento: in modalità AI, OliDuck lo analizzerebbe e ti darebbe un hint progressivo senza rivelare la soluzione.';

@@ -8,4 +8,5 @@ pages_build_output_dir = "public"
 # binding = "AI"
 
 # [vars]
-# AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8"
+# Modello predefinito verificato (functions/lib/model.js). Impostare solo per override.
+# AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
