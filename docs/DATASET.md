@@ -7,8 +7,10 @@ Questo documento descrive il dataset costruito dalle fonti pubbliche scaricate i
 
 | Directory | Repository | Licenza | Uso consentito |
 | --- | --- | --- | --- |
-| `official-writeups/` | `OliCyberIT/OliCyber.IT-Writeups` | GPL-3.0 (file `LICENSE`) | metadati autorevoli e writeup; conservare la licenza in caso di redistribuzione |
+| `official-writeups/` | `OliCyberIT/OliCyber.IT-Writeups` | GPL-3.0 (rilevata dal contenuto di `LICENSE`) | metadati autorevoli e writeup; conservare la licenza in caso di redistribuzione |
 | `community-solutions/` | `Privitorta/Training-OliCyber.IT-solutions` | **nessuna licenza dichiarata** | analisi locale; **nessuna pubblicazione o upload su Cloudflare senza autorizzazione** |
+
+La licenza non viene mai dedotta dal nome della repository: viene rilevata solo se un file `LICENSE`/`COPYING` è presente e il suo contenuto è riconosciuto. In caso contrario il valore resta `non verificata`.
 
 Le fonti sono state lette dal filesystem locale. Non sono state effettuate richieste di rete, non è stato eseguito alcun file proveniente dalle fonti e l'unico archivio ZIP presente non è stato estratto.
 
@@ -35,11 +37,22 @@ L'overwrite produce uno catalogo con `status: "unverified-derived"`: non equival
 
 | Sezione | Contenuto | Esposizione |
 | --- | --- | --- |
-| `challengeCatalog` | ID, titolo, categoria, edizione, autore, provenienza, descrizione derivata, allegati citati | importabile solo dopo sanificazione |
-| `learningKnowledgeBase` | overview, contesto derivato, concetti tecnici, materiali didattici | indicizzata per RAG, senza flag e senza passaggi di soluzione |
-| `solutionArchive` | writeup ufficiali, script e soluzioni community | `exposePublicly: false`, non indicizzata, non importata |
+| `challengeCatalog` | ID, titolo, categoria, edizione, autore, provenienza, descrizione derivata, allegati citati | non autorizzato per il tutor; importabile solo dopo sanificazione |
+| `learningKnowledgeBase` | solo documenti ammessi dal gate di pubblicazione | oggi vuota (0 documenti); nessun chunk derivato da writeup/soluzioni |
+| `solutionArchive` | writeup ufficiali, script, soluzioni community e materiale didattico non verificato | `exposePublicly: false`, `tutorAllowed: false`, non indicizzata, non importata |
 
-`rag-index.json` contiene solo chunk della Learning Knowledge Base. Ogni chunk conserva `challengeId`, `title`, `category`, `edition`, `source`, `docType` e `sourceRefs`. Il tutor non deve ricevere interi repository o writeup.
+`rag-index.json` contiene solo chunk della Learning Knowledge Base autorizzata. Ogni chunk conserva `challengeId`, `title`, `category`, `edition`, `classification`, `docType`, `sourceId`, `sourcePath`, `sourceRepository`, `sourceCommit`, `license`, `provenanceType`, `documentType` e `sourceRefs`. Sono definiti filtri per `challengeId`, `category`, `edition` e `classification`, e i campi di citazione sono esplicitati in `citationFields`. Il tutor non deve ricevere interi repository o writeup.
+
+### Gate di pubblicazione
+
+Il gate ha default `DENY`. Un documento entra nel corpus solo con:
+
+- `publicationAllowed === true` e `reviewStatus === 'approved'`;
+- licenza verificata e classificazione ammessa (`official-description` o `learning-material`);
+- provenienza e riferimenti alla fonte risolvibili;
+- testo senza flag, soluzioni, righe `Fonte:` o percorsi sorgente.
+
+I documenti respinti restano tracciati in `catalog.json` → `publicationGate.excludedDocuments`, con classificazione e motivi di esclusione. Il testo del tutor non contiene percorsi sorgente: la provenienza è sempre strutturata.
 
 ## Schema degli ID
 
@@ -57,7 +70,7 @@ Se le evidenze sono contrastanti o il titolo è ambiguo, il candidato resta una 
 
 Le fonti disponibili **non contengono descrizioni ufficiali**. Ogni record ha `description.official: null`.
 
-Il campo `description.derived` contiene, quando presente, il primo paragrafo utile estratto da una writeup o da un blocco citato di una soluzione community. La provenienza è sempre registrata con percorso e metodo. Questo testo non è mai etichettato come descrizione ufficiale e non entra nel catalogo come verità ufficiale.
+Il campo `description.derived` contiene, quando presente, il primo paragrafo utile estratto da una writeup o da un blocco citato di una soluzione community. La provenienza è sempre registrata con percorso e metodo. Questo testo non è mai etichettato come descrizione ufficiale, non entra nel corpus RAG e non viene copiato in `description`/`statement` o nei tag dal catalogo applicativo derivato.
 
 ## Aggiornamenti ripetibili
 
@@ -73,6 +86,9 @@ Gli ID derivano da percorsi e ID sorgente; i file sono identificati per SHA-256.
 ## Limiti
 
 - Il numero totale ufficiale delle challenge Training non è pubblico: la completezza non è verificabile.
-- Il catalogo applicativo demonstration resta `unverified-demo` finché non arriva un export autorizzato.
-- I flag presenti nelle writeup restano confinati nel Solution Archive locale: non sono presenti nel catalogo, nella knowledge base o nel catalogo applicativo generato.
+- Il catalogo applicativo demo resta `unverified-demo` finché non arriva un export autorizzato.
+- Il corpus RAG autorizzato è vuoto (0 documenti, 0 chunk): non è pronto per collegare il tutor. Non sono stati inventati contenuti sostitutivi.
+- I flag presenti nelle writeup restano confinati nel Solution Archive locale: non sono presenti nella KB autorizzata, nell'indice RAG o nel catalogo applicativo generato.
+- Il Solution Archive contiene flag reali: i flag `restricted`, `exposePublicly: false` e `cloudflareUploadAllowed: false` non sostituiscono un controllo di accesso.
 - Le licenze dei singoli allegati non sono dichiarate separatamente: non ne viene assunto il riutilizzo.
+- `generatedAt` indica lo snapshot deterministico delle fonti, non la data di esecuzione del builder.

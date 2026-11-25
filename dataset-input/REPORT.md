@@ -10,14 +10,14 @@ Generato in modo deterministico dall'ultimo commit delle fonti: `2026-03-25T15:2
 | File esaminati (inclusi metadati Git) | 444 |
 | File di contenuto | 386 |
 | File metadati repository (`.git/`) | 58 |
-| Challenge identificate | 465 |
+| Challenge identificate | 408 |
 | Righe dell'indice ufficiale | 155 |
 | ID sorgente ufficiali unici | 154 |
 | Challenge ufficiali dal README | 155 |
-| Challenge solo community | 310 |
+| Challenge solo community | 253 |
 | Candidati community agganciati a challenge ufficiali | 13 |
 | Descrizioni ufficiali | 0 |
-| Descrizioni derivate da writeup/soluzioni | 228 |
+| Descrizioni derivate da writeup/soluzioni | 210 |
 | Writeup ufficiali | 154 |
 | File soluzione community | 179 |
 | Documenti nel Solution Archive | 348 |
@@ -29,8 +29,10 @@ Generato in modo deterministico dall'ultimo commit delle fonti: `2026-03-25T15:2
 | ID challenge sorgente duplicati | 2 |
 | File non leggibili | 42 |
 | Archivi non estratti | 1 |
-| Documenti Learning Knowledge Base | 1125 |
-| Chunk RAG | 1125 |
+| Candidati Knowledge Base | 1050 |
+| Documenti KB ammessi dal gate | 0 |
+| Documenti KB esclusi dal gate | 1050 |
+| Chunk RAG autorizzati | 0 |
 
 **Categorie:** binary, crypto, misc, network, web.
 
@@ -45,15 +47,29 @@ Nessuna richiesta di rete è stata effettuata durante l'analisi. Nessun programm
 
 ## 3. Separazione dei dati
 
-- **Challenge Catalog** (`catalog.json`, chiave `challengeCatalog`): metadati, provenienza e descrizioni *derivate*. Nessun testo di soluzione.
-- **Learning Knowledge Base** (`catalog.json`, chiave `learningKnowledgeBase`; indice in `rag-index.json`): concetti, contesto didattico e materiali, senza flag e senza passaggi risolutivi.
-- **Solution Archive** (`catalog.json`, chiave `solutionArchive`): writeup ufficiali, script e soluzioni community. `exposePublicly: false`, `cloudflareUploadAllowed: false`, non indicizzato per il tutor.
+- **Challenge Catalog** (`catalog.json`, chiave `challengeCatalog`): metadati, provenienza e descrizioni *derivate*. Nessun testo di soluzione; non autorizzato per il tutor.
+- **Learning Knowledge Base** (`catalog.json`, chiave `learningKnowledgeBase`; indice in `rag-index.json`): solo documenti che superano il gate. Il testo non contiene righe `Fonte:`, percorsi sorgente, flag o passaggi risolutivi.
+- **Solution Archive** (`catalog.json`, chiave `solutionArchive`): writeup ufficiali, script, soluzioni community e materiale didattico non verificato. `exposePublicly: false`, `cloudflareUploadAllowed: false`, non indicizzato per il tutor.
+
+### Gate di pubblicazione
+
+| Parametro | Valore |
+| --- | --- |
+| Decisione predefinita | `DENY` |
+| Classificazioni ammesse | official-description, learning-material |
+| Candidati valutati | 1050 |
+| Documenti ammessi | 0 |
+| Documenti esclusi | 1050 |
+
+Motivi di esclusione: `autorizzazioneEsplicitaAssente` (1050), `classificazioneEsclusa` (999), `classificazioneNonAmmessa` (999), `licenzaFonteNonVerificata` (308), `licenzaNonVerificata` (308), `markerSoluzioneNelTesto` (210), `revisioneNonApprovata` (1050).
+
+I percorsi sorgente restano nei campi strutturati `sourceRefs`, `sourceId`, `sourcePath`, `sourceRepository`, `sourceCommit`, `license`, `provenanceType` e `documentType`; non vengono serializzati nel testo dei chunk.
 
 ## 4. Descrizioni e provenienza
 
 **Descrizioni ufficiali: 0.** Le fonti disponibili non contengono il testo ufficiale delle challenge: contengono indici, writeup e soluzioni. Ogni challenge dichiara quindi `description.official: null`.
 
-**Descrizioni derivate: 228** sono contrassegnate con percorso del file e metodo di estrazione. Non sono mai presentate come descrizioni ufficiali.
+**Descrizioni derivate: 210** sono contrassegnate con percorso del file e metodo di estrazione. Non sono mai presentate come descrizioni ufficiali e non vengono copiate in `description` o `statement` dal catalogo applicativo derivato.
 
 ## 5. Duplicati e conflitti
 
@@ -93,9 +109,9 @@ Conteggio per campo, calcolato sui record del Challenge Catalog:
 
 | Campo mancante | Record |
 | --- | ---: |
-| descrizione ufficiale (assente nelle fonti) | 465 |
-| autore della challenge | 310 |
-| edizione | 284 |
+| descrizione ufficiale (assente nelle fonti) | 408 |
+| autore della challenge | 253 |
+| edizione | 227 |
 | categoria | 219 |
 
 Il numero totale ufficiale delle challenge Training non è pubblico: questo dataset **non dimostra completezza**.
@@ -105,9 +121,14 @@ Il numero totale ufficiale delle challenge Training non è pubblico: questo data
 | Controllo | Esito |
 | --- | --- |
 | Ogni challenge ha almeno un riferimento a un file esistente | OK |
-| Ogni chunk RAG ha riferimenti alla fonte | OK |
+| Ogni chunk RAG ha riferimenti strutturati risolvibili | OK |
 | Nessuna flag nel catalogo o nella knowledge base | OK |
+| Nessun contenuto solutivo o flag-like nel corpus tutor | OK |
+| Placeholder di redaction preservati | OK |
+| Gate di pubblicazione con default DENY | OK |
 | Soluzioni non esposte pubblicamente | OK |
+| Solution Archive non indicizzato | OK |
+| RAG non collegato al runtime | OK |
 
 ## 10. Aggiornamenti ripetibili
 
@@ -119,5 +140,5 @@ Rieseguendo `npm run dataset:build` con una nuova versione delle fonti:
 - `npm run dataset:import` produce un catalogo applicativo sanificato in `dataset-input/derived/` senza toccare `public/data/`;
 - solo `npm run dataset:import -- --apply` sovrascrive esplicitamente il catalogo applicativo, con stato `unverified-derived`.
 
-Lo stato dell'applicazione resta `unverified-demo` finché non viene fornito un export ufficiale autorizzato.
+Lo stato dell'applicazione resta `unverified-demo` finché non viene fornito un export ufficiale autorizzato. Il corpus RAG autorizzato contiene **0 chunk**; essendo vuoto, non è pronto per l'integrazione del tutor.
 

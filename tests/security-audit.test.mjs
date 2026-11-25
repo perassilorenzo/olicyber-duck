@@ -33,19 +33,23 @@ const applicationCatalog = readJson('dataset-input/derived/application-catalog.j
 const applicationReport = readJson('dataset-input/derived/application-import-report.json');
 
 test('il RAG indicizza solo tipologie ammesse e nessun documento solutivo', () => {
-  const allowed = new Set(['challenge-overview', 'concept-index', 'derived-context', 'learning-material']);
-  const forbidden = new Set(['official-writeup', 'community-solution', 'solution-attachment', 'learning-material-unverified']);
+  const allowed = new Set(['official-description', 'learning-material']);
+  const forbidden = new Set(['official-writeup', 'community-solution', 'attachment', 'derived-content', 'challenge-metadata']);
 
   assert.deepEqual(ragIndex.includedSections, ['learningKnowledgeBase']);
   assert.deepEqual(ragIndex.excludedSections, ['solutionArchive']);
+  assert.equal(ragIndex.runtimeConnected, false);
+  assert.equal(ragIndex.status, 'empty-no-authorized-documents');
 
   for (const chunk of ragIndex.chunks) {
     assert.equal(chunk.section, 'learningKnowledgeBase');
-    assert.ok(allowed.has(chunk.docType), `docType non ammesso: ${chunk.docType}`);
+    assert.ok(allowed.has(chunk.classification), `classificazione non ammessa: ${chunk.classification}`);
+    assert.ok(!forbidden.has(chunk.classification));
     assert.ok(!forbidden.has(chunk.docType));
     assert.ok(!chunk.docId.startsWith('sol-'));
   }
   assert.equal(ragIndex.chunks.length, catalog.learningKnowledgeBase.count);
+  assert.equal(catalog.publicationGate.defaultDecision, 'DENY');
 });
 
 test('ogni chunk conserva riferimenti risolvibili e chiavi di retrieval', () => {
@@ -97,9 +101,9 @@ test('le descrizioni derivate non sono presentate come descrizioni ufficiali', (
     assert.match(doc.text, /NON descrizione ufficiale/i, `${doc.id} non etichettato`);
   }
   for (const challenge of applicationCatalog.challenges) {
-    if (challenge.metadata?.descriptionProvenance) {
-      assert.equal(challenge.metadata.descriptionProvenance.type, 'derived-from-solution-source');
-    }
+    assert.equal(challenge.description, '');
+    assert.equal(challenge.statement, '');
+    assert.equal(typeof challenge.metadata?.derivedDescriptionExcluded, 'boolean');
   }
 });
 

@@ -22,6 +22,14 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  DENIED_CLASSIFICATIONS,
+  detectForbiddenContent,
+  evaluatePublicationGate,
+  GATE_DEFAULT,
+  TUTOR_ALLOWED_CLASSIFICATIONS,
+} from './lib/publication-gate.mjs';
+import { cleanMarkdown, normalizeForTutor } from './lib/text-normalization.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCES_DIR = path.join(ROOT, 'dataset-input', 'sources');
@@ -31,6 +39,13 @@ const REPOS = ['official-writeups', 'community-solutions'];
 const DECODER = new TextDecoder('utf-8', { fatal: true });
 const CHUNK_SIZE = 1100;
 const CHUNK_OVERLAP = 140;
+
+/**
+ * Autorizzazioni esplicite per il tutor. Vuote di proposito: la provenienza
+ * di una repository non è un'autorizzazione. Un'aggiunta richiede revisione
+ * umana, licenza verificata e pericolo documentato.
+ */
+const PUBLICATION_OVERRIDES = new Map();
 
 const CONCEPTS = [
   ['Python', /\bpython\b/i],
@@ -111,6 +126,39 @@ function originToWeb(origin) {
   return origin.replace(/^git@github\.com:/, 'https://github.com/').replace(/\.git$/, '');
 }
 
+/** Rileva la licenza da un file presente nella repository, senza assumere autorizzazioni. */
+function detectRepositoryLicense(repo) {
+  const base = path.join(SOURCES_DIR, repo);
+  const candidates = ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'COPYING', 'COPYING.md'];
+  const licensePath = candidates
+    .map((name) => path.join(base, name))
+    .find((candidate) => existsSync(candidate) && statSync(candidate).isFile());
+
+  if (!licensePath) {
+    return {
+      name: 'non verificata',
+      verified: false,
+      file: null,
+      detection: 'nessun file di licenza nella repository',
+    };
+  }
+
+  const info = readUtf8(readFileSync(licensePath));
+  const text = info.readable ? info.text : '';
+  let name = null;
+  if (/GNU GENERAL PUBLIC LICENSE/i.test(text) && /Version\s+3\b/i.test(text)) name = 'GPL-3.0';
+  else if (/MIT License/i.test(text)) name = 'MIT';
+  else if (/Apache License[\s\S]{0,200}Version 2\.0/i.test(text)) name = 'Apache-2.0';
+  else if (/Creative Commons Attribution[^\n]{0,80}4\.0/i.test(text)) name = 'CC-BY-4.0';
+
+  return {
+    name: name ?? 'non verificata',
+    verified: Boolean(name),
+    file: path.posix.join(repo, path.relative(base, licensePath).split(path.sep).join('/')),
+    detection: name ? 'contenuto del file di licenza' : 'file di licenza non riconosciuto',
+  };
+}
+
 function encodeSegments(rel) {
   return rel.split('/').map((part) => encodeURIComponent(part)).join('/');
 }
@@ -154,13 +202,19 @@ function readUtf8(buffer) {
   }
 }
 
+function repoRelativePath(rel) {
+  const slash = rel.indexOf('/');
+  return slash === -1 ? rel : rel.slice(slash + 1);
+}
+
 function roleOf(rel, format, readable, scope) {
   if (scope === 'repository-metadata') return 'repository-metadata';
-  if (/(^|\/)README\.md$/i.test(rel) || /(^|\/)LICENSE$/i.test(rel) || rel.endsWith('/.gitignore')) return 'documentation';
+  if (/(^|\/)README\.md$/i.test(rel) || /(^|\/)LICENSE(\.md|\.txt)?$/i.test(rel) || rel.endsWith('/.gitignore')) return 'documentation';
+  const inRepo = repoRelativePath(rel);
   if (format.startsWith('image/') || format === 'application/octet-stream'
     || format === 'application/x-executable' || format === 'unknown.bin'
-    || format === 'application/zip' || rel.includes('/attachments/') || rel.startsWith('Assets/')) return 'attachment';
-  if (rel.startsWith('Introduzione/')) return 'learning-material';
+    || format === 'application/zip' || rel.includes('/attachments/') || rel.startsWith('community-solutions/Assets/')) return 'attachment';
+  if (/^Introduzione\//i.test(inRepo)) return 'learning-material';
   if (rel.startsWith('official-writeups/') && rel.endsWith('.md')) return 'official-writeup';
   if (!readable) return 'attachment';
   return 'community-solution';
@@ -185,22 +239,6 @@ function slug(value) {
   return normalizeTitle(value).replace(/ /g, '-').replace(/^-|-$/g, '').slice(0, 90);
 }
 
-function redact(text) {
-  return String(text)
-    .replace(/flag\s*\{[^{}\n]{0,240}\}/gi, '[FLAG_RIMOSSA]')
-    .replace(/OliDuck\s*\{[^{}\n]{0,240}\}/gi, '[SEGRETO_RIMOSSO]')
-    .replace(/\b[A-Za-z0-9+/]{48,}={0,2}\b/g, '[TOKEN_RIMOSSO]');
-}
-
-function cleanMarkdown(text) {
-  return text
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/[*_`~]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 function deriveOfficialDescription(text) {
   const lines = text.split(/\r?\n/);
   let afterHeading = false;
@@ -221,7 +259,7 @@ function deriveOfficialDescription(text) {
     }
     buffer.push(line);
   }
-  const result = cleanMarkdown(redact(buffer.join(' ')));
+  const result = normalizeForTutor(buffer.join(' '));
   return result ? result.slice(0, 700) : null;
 }
 
@@ -236,7 +274,7 @@ function deriveCommunityDescription(text) {
     }
     buffer.push(line.replace(/^>\s?/, ''));
   }
-  const result = cleanMarkdown(redact(buffer.join(' ')));
+  const result = normalizeForTutor(buffer.join(' '));
   return result ? result.slice(0, 700) : null;
 }
 
@@ -264,8 +302,59 @@ function attachmentsFromWriteup(rel, text, manifestByPath) {
   return [...found].sort();
 }
 
+function stableSourceId(pathValue) {
+  return `src-${sha256(pathValue).slice(0, 16)}`;
+}
+
+function classificationForRole(role) {
+  if (role === 'official-writeup') return 'official-writeup';
+  if (role === 'learning-material') return 'learning-material';
+  if (role === 'attachment') return 'attachment';
+  if (role === 'community-solution') return 'community-solution';
+  if (role === 'repository-metadata') return 'challenge-metadata';
+  return 'challenge-metadata';
+}
+
+function provenanceTypeForKind(kind) {
+  if (kind === 'official-index' || kind === 'edition-index') return 'official-index';
+  if (kind === 'official-writeup') return 'official-writeup';
+  if (kind === 'learning-material') return 'repository-learning-material';
+  if (kind === 'community-solution') return 'community-solution';
+  return 'repository-source';
+}
+
 function sourceRef(pathValue, kind, evidence) {
-  return { path: pathValue, kind, evidence };
+  const repo = pathValue.split('/')[0];
+  const info = metaByRepo.get(repo);
+  const file = manifestByPathGlobal.get(pathValue);
+  const license = file?.licenseVerified
+    ? { name: file.license, verified: true, file: file.licenseFile ?? null }
+    : { name: file?.license ?? (repo === 'official-writeups' ? 'GPL-3.0' : 'non verificata'), verified: false, file: null };
+  return {
+    sourceId: stableSourceId(pathValue),
+    path: pathValue,
+    sourcePath: pathValue,
+    kind,
+    evidence,
+    sourceRepository: info?.origin ?? repo,
+    sourceCommit: info?.commit ?? null,
+    license,
+    provenanceType: provenanceTypeForKind(kind),
+    documentType: classificationForRole(file?.role ?? kind),
+  };
+}
+
+function licenseForRefs(refs) {
+  const licenses = new Set(refs.map((ref) => ref.license?.name).filter(Boolean));
+  if (licenses.size === 1 && licenses.has('GPL-3.0')) {
+    return { name: 'GPL-3.0', verified: true, file: 'official-writeups/LICENSE' };
+  }
+  if (licenses.size === 0) return { name: 'non verificata', verified: false, file: null };
+  return {
+    name: [...licenses].sort((a, b) => a.localeCompare(b, 'it')).join(' + '),
+    verified: false,
+    file: null,
+  };
 }
 
 function parseOfficialReadme(text, manifestByPath, meta) {
@@ -328,6 +417,11 @@ function officialChallenge(row, id, duplicateSourceId) {
     duplicateSourceId,
     title: row.title,
     writeupPath: row.writeupPath,
+    classification: 'challenge-metadata',
+    documentType: 'challenge-metadata',
+    provenanceType: row.sourceChallengeId ? 'official-index' : 'path-derived',
+    publicationAllowed: false,
+    reviewStatus: 'not-approved',
     category: row.category,
     edition: row.editionLabel,
     editionSlug: row.editionSlug,
@@ -341,6 +435,9 @@ function officialChallenge(row, id, duplicateSourceId) {
         text: derived,
         provenance: row.writeupPath,
         method: 'primo paragrafo del writeup prima della sezione soluzione; mai etichettato come descrizione ufficiale',
+        classification: 'derived-content',
+        publicationAllowed: false,
+        reviewStatus: 'not-approved',
       } : null,
     },
     materials: {
@@ -355,7 +452,7 @@ function officialChallenge(row, id, duplicateSourceId) {
     concepts,
     communityReferences: [],
     sourceRefs: refs,
-    license: { name: 'GPL-3.0', verified: true, file: 'official-writeups/LICENSE' },
+    license: licenseForRefs(refs),
     verification: {
       status: 'source-metadata-verified-description-derived',
       verifiedFields: ['titolo', 'categoria', 'edizione', 'autore', 'ID sorgente', 'URL sorgente'],
@@ -461,7 +558,7 @@ function communityGroups(files, manifestByPath) {
     group.id = `cs-${slug(group.event || 'community')}-${slug(group.title)}`;
     group.sourceUrl = `${originToWeb(metaByRepo.get(primary.repo).origin)}/blob/${metaByRepo.get(primary.repo).commit}/${encodeSegments(primary.rel.slice(primary.repo.length + 1))}`;
     group.sourceRefs = refs;
-    group.license = { name: 'non verificata', verified: false, file: null };
+    group.license = licenseForRefs(refs);
     candidates.push(group);
   }
   return candidates.sort((a, b) => a.id.localeCompare(b.id));
@@ -507,6 +604,7 @@ function main() {
     meta[repo] = gitInfo(dir);
   }
   metaByRepo = new Map(REPOS.map((repo) => [repo, meta[repo]]));
+  const licenseByRepo = new Map(REPOS.map((repo) => [repo, detectRepositoryLicense(repo)]));
 
   // Fase 1: inventario completo, senza eseguire alcun contenuto.
   const files = [];
@@ -520,7 +618,8 @@ function main() {
       const textInfo = readUtf8(buffer);
       const scope = rel.slice(repo.length + 1).startsWith('.git/') ? 'repository-metadata' : 'content';
       const role = roleOf(rel, format, textInfo.readable, scope);
-      const licenseVerified = repo === 'official-writeups';
+      const repoLicense = licenseByRepo.get(repo);
+      const licenseVerified = repoLicense.verified;
       const commit = meta[repo].commit;
       const sourceUrl = scope === 'content'
         ? `${originToWeb(meta[repo].origin)}/blob/${commit}/${encodeSegments(rel.slice(repo.length + 1))}`
@@ -544,8 +643,10 @@ function main() {
         archive: format === 'application/zip',
         extracted: false,
         extractionNote: format === 'application/zip' ? 'archivio non estratto: contenuto e sicurezza non verificati' : null,
-        license: licenseVerified ? 'GPL-3.0' : 'non verificata',
+        license: repoLicense.name,
+        licenseFile: repoLicense.file,
         licenseVerified,
+        licenseDetection: repoLicense.detection,
         sourceUrl,
         text: textInfo.text,
       });
@@ -676,6 +777,11 @@ function main() {
       duplicateSourceId: false,
       title: group.title,
       titleSource: group.titleSource,
+      classification: 'challenge-metadata',
+      documentType: 'challenge-metadata',
+      provenanceType: 'path-derived',
+      publicationAllowed: false,
+      reviewStatus: 'not-approved',
       category: group.category,
       edition: group.edition.label,
       editionSlug: group.edition.slug,
@@ -689,6 +795,9 @@ function main() {
           text: group.derived,
           provenance: group.files.find((file) => file.format === 'text/markdown')?.rel ?? group.files[0].rel,
           method: 'primo blocco citato nel file di soluzione community; non è una descrizione ufficiale',
+          classification: 'derived-content',
+          publicationAllowed: false,
+          reviewStatus: 'not-approved',
         } : null,
       },
       materials: {
@@ -705,7 +814,7 @@ function main() {
         evidence: group.evidence,
       }],
       sourceRefs: group.sourceRefs,
-      license: { name: 'non verificata', verified: false, file: null },
+      license: licenseForRefs(group.sourceRefs),
       verification: {
         status: 'path-derived-unverified',
         verifiedFields: ['presenza del file nella repository community'],
@@ -737,30 +846,54 @@ function main() {
   }
   for (const challenge of allChallenges) challenge.materials.attachments.sort();
 
-  // Fase 6: knowledge base (senza soluzioni né flag) e solution archive (ristretto).
-  const kbDocuments = [];
+  // Fase 6: candidati KB classificati. Il gate decide quali entrano nel tutor.
+  const inventoryPaths = new Set(files.map((file) => file.rel));
+  const kbCandidates = [];
+
+  function addKbCandidate(base) {
+    const refs = base.sourceRefs ?? [];
+    const override = PUBLICATION_OVERRIDES.get(base.id) ?? {};
+    const primary = refs[0] ?? null;
+    kbCandidates.push({
+      ...base,
+      sourceId: primary?.sourceId ?? null,
+      sourcePath: primary?.path ?? null,
+      sourceRepository: primary?.sourceRepository ?? null,
+      sourceCommit: primary?.sourceCommit ?? null,
+      license: base.license ?? licenseForRefs(refs),
+      provenanceType: base.provenanceType ?? primary?.provenanceType ?? 'repository-source',
+      documentType: base.docType,
+      publicationAllowed: override.publicationAllowed === true,
+      reviewStatus: override.reviewStatus ?? 'not-approved',
+      text: normalizeForTutor(base.text),
+    });
+  }
+
   for (const challenge of allChallenges) {
-    const metaText = [
-      `Challenge: ${challenge.title}`,
-      `Categoria: ${challenge.category ?? 'non dichiarata'}`,
-      `Edizione: ${challenge.edition ?? 'non dichiarata'}`,
-      `Autore: ${challenge.author ?? 'non dichiarato'}`,
-      `Fonte: ${challenge.sourceRefs.map((ref) => ref.path).join('; ')}`,
-    ].join('\n');
-    kbDocuments.push({
+    const overviewRefs = challenge.sourceRefs;
+    addKbCandidate({
       id: `kb-overview-${challenge.id}`,
       challengeId: challenge.id,
       title: challenge.title,
       category: challenge.category,
       edition: challenge.edition,
-      source: challenge.sourceRefs[0]?.path ?? null,
+      source: overviewRefs[0]?.path ?? null,
       docType: 'challenge-overview',
-      sourceRefs: challenge.sourceRefs,
-      license: challenge.license,
-      text: redact(metaText),
+      classification: 'challenge-metadata',
+      provenanceType: 'challenge-metadata',
+      sourceRefs: overviewRefs,
+      license: licenseForRefs(overviewRefs),
+      text: [
+        `Challenge: ${challenge.title}`,
+        `Categoria: ${challenge.category ?? 'non dichiarata'}`,
+        `Edizione: ${challenge.edition ?? 'non dichiarata'}`,
+        `Autore: ${challenge.author ?? 'non dichiarato'}`,
+      ].join('\n'),
     });
+
     if (challenge.description.derived) {
-      kbDocuments.push({
+      const derivedRefs = challenge.sourceRefs.filter((ref) => ref.path === challenge.description.derived.provenance);
+      addKbCandidate({
         id: `kb-context-${challenge.id}`,
         challengeId: challenge.id,
         title: challenge.title,
@@ -768,13 +901,16 @@ function main() {
         edition: challenge.edition,
         source: challenge.description.derived.provenance,
         docType: 'derived-context',
-        sourceRefs: challenge.sourceRefs.filter((ref) => ref.path === challenge.description.derived.provenance),
-        license: challenge.license,
+        classification: 'derived-content',
+        provenanceType: 'source-derived',
+        sourceRefs: derivedRefs,
+        license: licenseForRefs(derivedRefs),
         text: `Contesto ricostruito da una fonte di soluzione (NON descrizione ufficiale): ${challenge.description.derived.text}`,
       });
     }
+
     if (challenge.concepts.length) {
-      kbDocuments.push({
+      addKbCandidate({
         id: `kb-concepts-${challenge.id}`,
         challengeId: challenge.id,
         title: challenge.title,
@@ -782,9 +918,11 @@ function main() {
         edition: challenge.edition,
         source: challenge.sourceRefs[0]?.path ?? null,
         docType: 'concept-index',
+        classification: 'derived-content',
+        provenanceType: 'source-derived',
         sourceRefs: challenge.sourceRefs,
-        license: challenge.license,
-        text: `Concetti tecnici citati nelle fonti: ${challenge.concepts.join(', ')}. Nessuna soluzione o flag è inclusa in questo documento.`,
+        license: licenseForRefs(challenge.sourceRefs),
+        text: `Concetti tecnici citati nelle fonti: ${challenge.concepts.join(', ')}. Il testo completo non è incluso.`,
       });
     }
   }
@@ -792,7 +930,7 @@ function main() {
   for (const file of files.filter((item) => item.role === 'learning-material' && item.readable)) {
     const concepts = conceptsOf(file.text ?? '');
     if (!concepts.length) continue;
-    kbDocuments.push({
+    addKbCandidate({
       id: `kb-material-${slug(file.rel)}`,
       challengeId: (file.challengeIds ?? [])[0] ?? null,
       title: path.posix.basename(file.rel),
@@ -800,19 +938,50 @@ function main() {
       edition: editionFromCommunityPath(file.relDir).label,
       source: file.rel,
       docType: 'learning-material',
-      sourceRefs: [sourceRef(file.rel, 'learning-material', 'materiale didattico nella repository community')],
-      license: { name: 'non verificata', verified: false, file: null },
-      text: `Materiale didattico: ${path.posix.basename(file.rel)}. Concetti: ${concepts.join(', ')}. Il codice completo non è incluso in questa knowledge base.`,
+      classification: 'learning-material',
+      provenanceType: 'repository-learning-material',
+      sourceRefs: [sourceRef(file.rel, 'learning-material', 'materiale didattico individuato dal percorso della repository community')],
+      license: { name: file.license, verified: file.licenseVerified, file: file.licenseFile },
+      text: `Materiale didattico individuato nella repository community. Concetti: ${concepts.join(', ')}. Il codice completo non è incluso.`,
     });
   }
+
+  const gateDecisions = kbCandidates.map((doc) => ({
+    id: doc.id,
+    docType: doc.docType,
+    classification: doc.classification,
+    decision: evaluatePublicationGate(doc, { paths: inventoryPaths }),
+  }));
+  const decisionById = new Map(gateDecisions.map((entry) => [entry.id, entry.decision]));
+  for (const doc of kbCandidates) {
+    doc.publicationGate = decisionById.get(doc.id);
+  }
+
+  const kbDocuments = kbCandidates.filter((doc) => decisionById.get(doc.id).allowed);
+  const excludedDocuments = kbCandidates
+    .filter((doc) => !decisionById.get(doc.id).allowed)
+    .map((doc) => ({
+      id: doc.id,
+      docType: doc.docType,
+      classification: doc.classification,
+      sourceId: doc.sourceId,
+      sourcePath: doc.sourcePath,
+      license: doc.license,
+      reasons: decisionById.get(doc.id).reasons,
+    }));
 
   const solutionDocuments = [];
   for (const file of files) {
     if (file.scope !== 'content') continue;
     const isOfficialWriteup = file.role === 'official-writeup';
-    const isCommunitySolution = file.role === 'community-solution' || file.role === 'learning-material';
+    const isLearningMaterial = file.role === 'learning-material';
+    const isCommunitySolution = file.role === 'community-solution' || isLearningMaterial;
     const isBinaryRelated = file.role === 'attachment' && (file.rel.includes('/attachments/') || file.rel.startsWith('Assets/') || file.rel.includes('Byte-flag/'));
     if (!isOfficialWriteup && !isCommunitySolution && !isBinaryRelated) continue;
+    const classification = isOfficialWriteup
+      ? 'official-writeup'
+      : isLearningMaterial ? 'learning-material' : isCommunitySolution ? 'community-solution' : 'attachment';
+    const ref = sourceRef(file.rel, classification, 'archivio locale ristretto: mai indicizzato per il tutor');
     solutionDocuments.push({
       id: `sol-${slug(file.rel)}`,
       title: path.posix.basename(file.rel),
@@ -820,12 +989,22 @@ function main() {
       format: file.format,
       sizeBytes: file.sizeBytes,
       sha256: file.sha256,
+      sourceId: ref.sourceId,
       sourcePath: file.rel,
+      sourceRepository: ref.sourceRepository,
+      sourceCommit: ref.sourceCommit,
+      sourceRefs: [ref],
       sourceUrl: file.sourceUrl,
       challengeIds: file.challengeIds ?? [],
-      license: file.licenseVerified ? 'GPL-3.0' : 'non verificata',
+      license: { name: file.license, verified: file.licenseVerified, file: file.licenseFile },
+      provenanceType: 'restricted-source-file',
+      documentType: file.role,
+      classification,
+      publicationAllowed: false,
+      reviewStatus: 'not-approved',
       docType: isOfficialWriteup ? 'official-writeup' : isCommunitySolution ? 'community-solution' : 'solution-attachment',
       restricted: true,
+      tutorAllowed: false,
       exposePublicly: false,
       cloudflareUploadAllowed: false,
       archive: file.archive,
@@ -842,20 +1021,30 @@ function main() {
         section: 'learningKnowledgeBase',
         docId: doc.id,
         docType: doc.docType,
+        classification: doc.classification,
         challengeId: doc.challengeId,
         title: doc.title,
         category: doc.category,
         edition: doc.edition,
         source: doc.source,
+        sourceId: doc.sourceId,
+        sourcePath: doc.sourcePath,
+        sourceRepository: doc.sourceRepository,
+        sourceCommit: doc.sourceCommit,
+        license: doc.license,
+        provenanceType: doc.provenanceType,
+        documentType: doc.documentType,
         sourceRefs: doc.sourceRefs,
-        license: doc.license.name,
+        publicationAllowed: doc.publicationAllowed,
+        reviewStatus: doc.reviewStatus,
         retrievalKeys: {
           challengeId: doc.challengeId,
           title: doc.title,
           category: doc.category,
           edition: doc.edition,
-          source: doc.source,
           docType: doc.docType,
+          classification: doc.classification,
+          source: doc.source,
         },
         text: part.text,
         charStart: part.start,
@@ -883,6 +1072,8 @@ function main() {
     },
     license: file.license,
     licenseVerified: file.licenseVerified,
+    licenseFile: file.licenseFile ?? null,
+    licenseDetection: file.licenseDetection ?? null,
     readable: file.readable,
     readabilityNote: file.readabilityNote,
     encoding: file.encoding,
@@ -914,8 +1105,37 @@ function main() {
     throw new Error('Il catalogo o la knowledge base contengono una flag: generazione interrotta.');
   }
 
+  const tutorItems = [...kbDocuments, ...ragChunks];
+  const forbiddenInTutor = tutorItems.flatMap((item) => (
+    detectForbiddenContent(item.text).map((reason) => `${item.id}:${reason}`)
+  ));
+  if (forbiddenInTutor.length) {
+    throw new Error(`Contenuto non ammesso nel corpus tutor: ${forbiddenInTutor.join(', ')}`);
+  }
+  const tutorSerializedCheck = JSON.stringify({ documents: kbDocuments, chunks: ragChunks });
+  if (/\[(?:FLAG|SEGRETO|TOKEN)RIMOSS[OA]\]/i.test(tutorSerializedCheck)) {
+    throw new Error('Placeholder di redaction deformato nel corpus tutor: generazione interrotta.');
+  }
+
+  const gateSummary = {
+    defaultDecision: GATE_DEFAULT,
+    admittedClassifications: [...TUTOR_ALLOWED_CLASSIFICATIONS],
+    deniedClassifications: [...DENIED_CLASSIFICATIONS],
+    candidates: kbCandidates.length,
+    admitted: kbDocuments.length,
+    excluded: excludedDocuments.length,
+    admittedIds: kbDocuments.map((doc) => doc.id),
+    excludedByClassification: countBy(excludedDocuments, (doc) => doc.classification),
+    excludedByReason: countBy(
+      gateDecisions.filter((entry) => !entry.decision.allowed),
+      (entry) => entry.decision.reasons,
+      true,
+    ),
+    excludedDocuments,
+  };
+
   const generatedAt = REPOS.map((repo) => meta[repo].committedAt).sort().at(-1);
-  const counts = buildCounts(files, allChallenges, officialRows, duplicateGroups, kbDocuments, solutionDocuments, ragChunks, matched, ambiguous);
+  const counts = buildCounts(files, allChallenges, officialRows, duplicateGroups, kbDocuments, solutionDocuments, ragChunks, matched, ambiguous, gateSummary);
   const limitations = buildLimitations(counts);
 
   const catalog = {
@@ -929,18 +1149,24 @@ function main() {
       note: 'Gli ID non vengono mai riassegnati in base a similarità di titolo.',
     },
     separationPolicy: {
-      challengeCatalog: 'metadati e descrizioni derivate, senza testi di soluzione',
-      learningKnowledgeBase: 'concetti e contesto didattico, senza flag e senza passaggi di soluzione',
-      solutionArchive: 'writeup e script di soluzione, local-only, non indicizzati per il tutor',
-      publicExposure: 'nessuna sezione è pubblicata automaticamente; solo un catalogo sanificato può essere importato',
+      challengeCatalog: 'metadati e descrizioni derivate, senza testi di soluzione; non autorizzato per il tutor',
+      learningKnowledgeBase: 'solo documenti ammessi dal gate di pubblicazione; testo senza percorsi sorgente, flag o soluzioni',
+      solutionArchive: 'writeup, script e materiale didattico non verificato: local-only, non indicizzato per il tutor',
+      publicExposure: 'nessuna sezione è pubblicata automaticamente; il catalogo applicativo non copia descrizioni derivate',
     },
-    sources: REPOS.map((repo) => ({
-      name: repo,
-      url: originToWeb(meta[repo].origin),
-      commit: meta[repo].commit,
-      committedAt: meta[repo].committedAt,
-      license: repo === 'official-writeups' ? 'GPL-3.0' : 'non verificata',
-    })),
+    publicationGate: gateSummary,
+    sources: REPOS.map((repo) => {
+      const license = licenseByRepo.get(repo);
+      return {
+        name: repo,
+        url: originToWeb(meta[repo].origin),
+        commit: meta[repo].commit,
+        committedAt: meta[repo].committedAt,
+        license: license.name,
+        licenseVerified: license.verified,
+        licenseFile: license.file,
+      };
+    }),
     counts,
     challengeCatalog: {
       count: allChallenges.length,
@@ -966,24 +1192,54 @@ function main() {
     overlap: CHUNK_OVERLAP,
     includedSections: ['learningKnowledgeBase'],
     excludedSections: ['solutionArchive'],
+    status: ragChunks.length ? 'populated-not-runtime-connected' : 'empty-no-authorized-documents',
+    runtimeConnected: false,
+    gate: {
+      defaultDecision: GATE_DEFAULT,
+      admittedClassifications: [...TUTOR_ALLOWED_CLASSIFICATIONS],
+      candidates: gateSummary.candidates,
+      admitted: gateSummary.admitted,
+      excluded: gateSummary.excluded,
+    },
+    filters: {
+      challengeId: [...new Set(ragChunks.map((chunk) => chunk.challengeId).filter(Boolean))].sort(),
+      category: [...new Set(ragChunks.map((chunk) => chunk.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'it')),
+      edition: [...new Set(ragChunks.map((chunk) => chunk.edition).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'it')),
+      classification: [...new Set(ragChunks.map((chunk) => chunk.classification).filter(Boolean))].sort(),
+    },
+    citationFields: [
+      'sourceId',
+      'sourcePath',
+      'sourceRepository',
+      'sourceCommit',
+      'license',
+      'provenanceType',
+      'documentType',
+      'sourceRefs',
+    ],
     count: ragChunks.length,
     chunks: ragChunks,
-    note: 'Il tutor deve recuperare solo chunk indicizzati qui; non deve ricevere interi repository o writeup.',
+    note: 'Struttura pronta per un futuro retrieval: nessun binding Workers AI o Vectorize è attivo e il runtime non carica questo indice.',
   };
 
   const manifest = {
     schemaVersion: 1,
     generatedAt,
     root: 'dataset-input/sources',
-    repositories: REPOS.map((repo) => ({
-      name: repo,
-      url: originToWeb(meta[repo].origin),
-      commit: meta[repo].commit,
-      committedAt: meta[repo].committedAt,
-      license: repo === 'official-writeups' ? 'GPL-3.0' : 'non verificata',
-      licenseFile: repo === 'official-writeups' ? 'official-writeups/LICENSE' : null,
-      files: files.filter((file) => file.repo === repo).length,
-    })),
+    repositories: REPOS.map((repo) => {
+      const license = licenseByRepo.get(repo);
+      return {
+        name: repo,
+        url: originToWeb(meta[repo].origin),
+        commit: meta[repo].commit,
+        committedAt: meta[repo].committedAt,
+        license: license.name,
+        licenseVerified: license.verified,
+        licenseFile: license.file,
+        licenseDetection: license.detection,
+        files: files.filter((file) => file.repo === repo).length,
+      };
+    }),
     executionPolicy: 'nessun programma, script, binario o allegato delle fonti è stato eseguito',
     extractionPolicy: 'nessun archivio è stato estratto',
     duplicateGroups,
@@ -997,6 +1253,7 @@ function main() {
     purpose: 'report di provenienza del dataset di ricerca, non del catalogo ufficiale Training',
     sources: catalog.sources,
     counts,
+    publicationGate: gateSummary,
     duplicates: {
       exactFileGroups: duplicateGroups.length,
       exactFileCopies: duplicateGroups.reduce((sum, group) => sum + group.paths.length - 1, 0),
@@ -1018,9 +1275,16 @@ function main() {
     },
     verification: {
       catalogSourceRefsComplete: allChallenges.every((challenge) => challenge.sourceRefs.every((ref) => manifestByFinalPath.has(ref.path))),
-      kbSourceRefsComplete: ragChunks.every((chunk) => chunk.sourceRefs.length > 0),
+      kbSourceRefsComplete: ragChunks.every((chunk) => chunk.sourceRefs.length > 0
+        && chunk.sourceRefs.every((ref) => manifestByFinalPath.has(ref.path))
+        && Boolean(chunk.sourceId && chunk.sourcePath && chunk.sourceRepository && chunk.sourceCommit && chunk.provenanceType && chunk.documentType)),
       noFlagsInCatalogOrKb: !catalogSerializedCheck.match(/flag\s*\{[^{}]+\}/i),
+      noForbiddenContentInTutorCorpus: forbiddenInTutor.length === 0,
+      placeholdersIntactInTutorCorpus: !/\[(?:FLAG|SEGRETO|TOKEN)RIMOSSA\]/i.test(tutorSerializedCheck),
+      publicationGateDefaultDeny: GATE_DEFAULT === 'DENY',
       solutionsNotInPublic: solutionDocuments.every((doc) => doc.exposePublicly === false),
+      solutionArchiveNotIndexed: ragChunks.every((chunk) => !chunk.docId.startsWith('sol-')),
+      ragRuntimeNotConnected: ragIndex.runtimeConnected === false,
     },
     limitations,
   };
@@ -1039,7 +1303,20 @@ function main() {
   console.log('Output: dataset-input/{REPORT.md,manifest.json,import-report.json,catalog.json,rag-index.json}');
 }
 
-function buildCounts(files, challenges, officialRows, duplicateGroups, kbDocuments, solutionDocuments, ragChunks, matched, ambiguous) {
+function countBy(items, keyFn, flatten = false) {
+  const counts = {};
+  for (const item of items) {
+    const raw = keyFn(item);
+    const keys = flatten ? (Array.isArray(raw) ? raw : [raw]) : [raw];
+    for (const key of keys) {
+      if (key === null || key === undefined) continue;
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+  }
+  return Object.fromEntries(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b, 'it')));
+}
+
+function buildCounts(files, challenges, officialRows, duplicateGroups, kbDocuments, solutionDocuments, ragChunks, matched, ambiguous, gateSummary) {
   const content = files.filter((file) => file.scope === 'content');
   const metadata = files.filter((file) => file.scope === 'repository-metadata');
   const missingFields = {};
@@ -1078,6 +1355,9 @@ function buildCounts(files, challenges, officialRows, duplicateGroups, kbDocumen
     archivesNotExtracted: files.filter((file) => file.archive).length,
     licenseVerifiedFiles: files.filter((file) => file.licenseVerified).length,
     licenseUnverifiedFiles: files.filter((file) => !file.licenseVerified).length,
+    knowledgeBaseCandidates: gateSummary.candidates,
+    knowledgeBaseDocumentsAuthorized: kbDocuments.length,
+    knowledgeBaseDocumentsExcluded: gateSummary.excluded,
     knowledgeBaseDocuments: kbDocuments.length,
     ragChunks: ragChunks.length,
     missingFields,
@@ -1085,7 +1365,7 @@ function buildCounts(files, challenges, officialRows, duplicateGroups, kbDocumen
 }
 
 function buildLimitations(counts) {
-  return [
+  const limitations = [
     'Le fonti pubbliche non contengono il catalogo ufficiale completo: la completezza resta non verificabile senza export autorizzato.',
     `Tutte le ${counts.officialChallengeRecords} challenge ufficiali identificate hanno descrizione ufficiale assente; il testo presente nelle writeup è solo contesto derivato.`,
     'La repository community non dichiara licenza: nessun contenuto community deve essere pubblicato o caricato su Cloudflare senza autorizzazione.',
@@ -1093,6 +1373,10 @@ function buildLimitations(counts) {
     'Le soluzioni sono archive locali e non sono indicizzate per il tutor AI né accessibili da frontend o API pubbliche.',
     'L\'ID sorgente 726 compare due volte nel README ufficiale: i due record sono stati mantenuti distinti e segnalati.',
   ];
+  if (counts.knowledgeBaseDocumentsAuthorized === 0) {
+    limitations.push('Nessun documento supera il gate di pubblicazione: il corpus RAG autorizzato è vuoto e non è pronto per l\'integrazione del tutor.');
+  }
+  return limitations;
 }
 
 function writeJson(file, value) {
@@ -1137,8 +1421,10 @@ Generato in modo deterministico dall'ultimo commit delle fonti: \`${catalog.gene
 | ID challenge sorgente duplicati | ${counts.duplicateSourceChallengeIds} |
 | File non leggibili | ${counts.unreadableFiles} |
 | Archivi non estratti | ${counts.archivesNotExtracted} |
-| Documenti Learning Knowledge Base | ${counts.knowledgeBaseDocuments} |
-| Chunk RAG | ${counts.ragChunks} |
+| Candidati Knowledge Base | ${counts.knowledgeBaseCandidates} |
+| Documenti KB ammessi dal gate | ${counts.knowledgeBaseDocumentsAuthorized} |
+| Documenti KB esclusi dal gate | ${counts.knowledgeBaseDocumentsExcluded} |
+| Chunk RAG autorizzati | ${counts.ragChunks} |
 
 **Categorie:** ${counts.categoryNames.join(', ') || 'nessuna'}.
 
@@ -1152,15 +1438,29 @@ Nessuna richiesta di rete è stata effettuata durante l'analisi. Nessun programm
 
 ## 3. Separazione dei dati
 
-- **Challenge Catalog** (\`catalog.json\`, chiave \`challengeCatalog\`): metadati, provenienza e descrizioni *derivate*. Nessun testo di soluzione.
-- **Learning Knowledge Base** (\`catalog.json\`, chiave \`learningKnowledgeBase\`; indice in \`rag-index.json\`): concetti, contesto didattico e materiali, senza flag e senza passaggi risolutivi.
-- **Solution Archive** (\`catalog.json\`, chiave \`solutionArchive\`): writeup ufficiali, script e soluzioni community. \`exposePublicly: false\`, \`cloudflareUploadAllowed: false\`, non indicizzato per il tutor.
+- **Challenge Catalog** (\`catalog.json\`, chiave \`challengeCatalog\`): metadati, provenienza e descrizioni *derivate*. Nessun testo di soluzione; non autorizzato per il tutor.
+- **Learning Knowledge Base** (\`catalog.json\`, chiave \`learningKnowledgeBase\`; indice in \`rag-index.json\`): solo documenti che superano il gate. Il testo non contiene righe \`Fonte:\`, percorsi sorgente, flag o passaggi risolutivi.
+- **Solution Archive** (\`catalog.json\`, chiave \`solutionArchive\`): writeup ufficiali, script, soluzioni community e materiale didattico non verificato. \`exposePublicly: false\`, \`cloudflareUploadAllowed: false\`, non indicizzato per il tutor.
+
+### Gate di pubblicazione
+
+| Parametro | Valore |
+| --- | --- |
+| Decisione predefinita | \`${catalog.publicationGate.defaultDecision}\` |
+| Classificazioni ammesse | ${catalog.publicationGate.admittedClassifications.join(', ') || 'nessuna'} |
+| Candidati valutati | ${catalog.publicationGate.candidates} |
+| Documenti ammessi | ${catalog.publicationGate.admitted} |
+| Documenti esclusi | ${catalog.publicationGate.excluded} |
+
+Motivi di esclusione: ${Object.entries(catalog.publicationGate.excludedByReason).map(([reason, count]) => `\`${reason}\` (${count})`).join(', ') || 'nessuno'}.
+
+I percorsi sorgente restano nei campi strutturati \`sourceRefs\`, \`sourceId\`, \`sourcePath\`, \`sourceRepository\`, \`sourceCommit\`, \`license\`, \`provenanceType\` e \`documentType\`; non vengono serializzati nel testo dei chunk.
 
 ## 4. Descrizioni e provenienza
 
 **Descrizioni ufficiali: ${counts.officialDescriptions}.** Le fonti disponibili non contengono il testo ufficiale delle challenge: contengono indici, writeup e soluzioni. Ogni challenge dichiara quindi \`description.official: null\`.
 
-**Descrizioni derivate: ${counts.derivedDescriptions}** sono contrassegnate con percorso del file e metodo di estrazione. Non sono mai presentate come descrizioni ufficiali.
+**Descrizioni derivate: ${counts.derivedDescriptions}** sono contrassegnate con percorso del file e metodo di estrazione. Non sono mai presentate come descrizioni ufficiali e non vengono copiate in \`description\` o \`statement\` dal catalogo applicativo derivato.
 
 ## 5. Duplicati e conflitti
 
@@ -1208,9 +1508,14 @@ Il numero totale ufficiale delle challenge Training non è pubblico: questo data
 | Controllo | Esito |
 | --- | --- |
 | Ogni challenge ha almeno un riferimento a un file esistente | ${importReport.verification.catalogSourceRefsComplete ? 'OK' : 'FALLITO'} |
-| Ogni chunk RAG ha riferimenti alla fonte | ${importReport.verification.kbSourceRefsComplete ? 'OK' : 'FALLITO'} |
+| Ogni chunk RAG ha riferimenti strutturati risolvibili | ${importReport.verification.kbSourceRefsComplete ? 'OK' : 'FALLITO'} |
 | Nessuna flag nel catalogo o nella knowledge base | ${importReport.verification.noFlagsInCatalogOrKb ? 'OK' : 'FALLITO'} |
+| Nessun contenuto solutivo o flag-like nel corpus tutor | ${importReport.verification.noForbiddenContentInTutorCorpus ? 'OK' : 'FALLITO'} |
+| Placeholder di redaction preservati | ${importReport.verification.placeholdersIntactInTutorCorpus ? 'OK' : 'FALLITO'} |
+| Gate di pubblicazione con default DENY | ${importReport.verification.publicationGateDefaultDeny ? 'OK' : 'FALLITO'} |
 | Soluzioni non esposte pubblicamente | ${importReport.verification.solutionsNotInPublic ? 'OK' : 'FALLITO'} |
+| Solution Archive non indicizzato | ${importReport.verification.solutionArchiveNotIndexed ? 'OK' : 'FALLITO'} |
+| RAG non collegato al runtime | ${importReport.verification.ragRuntimeNotConnected ? 'OK' : 'FALLITO'} |
 
 ## 10. Aggiornamenti ripetibili
 
@@ -1222,7 +1527,7 @@ Rieseguendo \`npm run dataset:build\` con una nuova versione delle fonti:
 - \`npm run dataset:import\` produce un catalogo applicativo sanificato in \`dataset-input/derived/\` senza toccare \`public/data/\`;
 - solo \`npm run dataset:import -- --apply\` sovrascrive esplicitamente il catalogo applicativo, con stato \`unverified-derived\`.
 
-Lo stato dell'applicazione resta \`unverified-demo\` finché non viene fornito un export ufficiale autorizzato.
+Lo stato dell'applicazione resta \`unverified-demo\` finché non viene fornito un export ufficiale autorizzato. Il corpus RAG autorizzato contiene **${counts.ragChunks} chunk**; ${counts.ragChunks === 0 ? 'essendo vuoto, non è pronto per l\'integrazione del tutor.' : 'resta comunque da collegare esplicitamente al runtime solo dopo revisione.'}
 `;
 }
 

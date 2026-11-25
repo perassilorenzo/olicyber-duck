@@ -87,9 +87,14 @@ test('duplicati e writeup condivisi sono segnalati senza unire record', () => {
   }
 });
 
-test('la knowledge base è indicizzata senza soluzioni e il solution archive resta ristretto', () => {
+test('la knowledge base autorizzata è vuota e il solution archive resta ristretto', () => {
   assert.ok(ragIndex.excludedSections.includes('solutionArchive'));
-  assert.ok(ragIndex.chunks.length > 0);
+  assert.equal(ragIndex.runtimeConnected, false);
+  assert.equal(ragIndex.status, 'empty-no-authorized-documents');
+  assert.equal(ragIndex.chunks.length, 0);
+  assert.equal(catalog.learningKnowledgeBase.count, 0);
+  assert.ok(catalog.publicationGate.candidates > 0);
+  assert.ok(catalog.publicationGate.excluded > 0);
   for (const chunk of ragIndex.chunks) {
     assert.equal(chunk.section, 'learningKnowledgeBase');
     assert.ok(chunk.sourceRefs.length > 0);
@@ -141,6 +146,9 @@ test('l\'import del dataset è sanificato, ripetibile e non tocca public/data', 
   assert.equal(imported.completeness.verifiedAgainstSource, false);
   assert.equal(imported.completeness.imported, imported.challenges.length);
   assert.equal(imported.challenges.some((challenge) => challenge.demo), false);
+  assert.ok(imported.challenges.every((challenge) => challenge.description === '' && challenge.statement === ''));
+  assert.ok(imported.challenges.every((challenge) => challenge.tags.length === 0));
+  assert.ok(imported.challenges.every((challenge) => challenge.path === null));
   assert.ok(!JSON.stringify(imported).includes('flag{'));
   assert.ok(!JSON.stringify(imported).includes('solutionArchive'));
 

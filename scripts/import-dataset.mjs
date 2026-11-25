@@ -12,6 +12,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { detectForbiddenContent } from './lib/publication-gate.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { values } = parseArgs({
@@ -40,15 +41,6 @@ if (!dataset.challengeCatalog || !dataset.learningKnowledgeBase || !dataset.solu
   process.exit(1);
 }
 
-function redact(value) {
-  return String(value ?? '')
-    .replace(/flag\s*\{[^{}\n]{0,240}\}/gi, '[FLAG_RIMOSSA]')
-    .replace(/OliDuck\s*\{[^{}\n]{0,240}\}/gi, '[SEGRETO_RIMOSSO]')
-    .replace(/\b[A-Za-z0-9+/]{48,}={0,2}\b/g, '[TOKEN_RIMOSSO]')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 function hasForbiddenKeys(value) {
   if (Array.isArray(value)) return value.some(hasForbiddenKeys);
   if (!value || typeof value !== 'object') return false;
@@ -58,56 +50,51 @@ function hasForbiddenKeys(value) {
 }
 
 const sourceName = 'Dataset pubblico derivato da indici e soluzioni disponibili';
-const challenges = dataset.challengeCatalog.challenges.map((challenge) => {
-  const description = redact(challenge.description?.derived?.text ?? '');
-  const tags = [...new Set(challenge.concepts ?? [])].slice(0, 12);
-  const sourceRefs = (challenge.sourceRefs ?? []).map((ref) => ref.path);
-  return {
-    id: challenge.id,
-    originalId: challenge.sourceChallengeId,
-    title: challenge.title,
-    description,
-    statement: description,
-    category: challenge.category ?? null,
-    difficulty: null,
-    score: null,
-    author: challenge.author ?? null,
-    edition: challenge.edition ?? null,
-    path: sourceRefs[0] ?? null,
-    publishedAt: null,
-    state: null,
-    available: true,
-    sourceUrl: challenge.sourceUrl ?? null,
-    attachments: (challenge.materials?.attachments ?? []).map((name) => ({ name, url: null })),
-    tags,
-    metadata: {
-      challengeType: null,
-      hintsCount: null,
-      ignoredSensitiveFields: ['officialDescription', 'solutionText', 'writeupText', 'flags'],
-      learningGoals: tags.slice(0, 5),
-      hintTopics: [],
-      sourceRefs,
-      descriptionProvenance: challenge.description?.derived
-        ? { type: 'derived-from-solution-source', path: challenge.description.derived.provenance }
-        : null,
-      verification: challenge.verification?.status ?? null,
-      duplicateSourceId: challenge.duplicateSourceId === true,
-    },
-    provenance: {
-      source: sourceName,
-      importedAt: dataset.generatedAt,
-      verified: false,
-      status: challenge.verification?.status ?? null,
-    },
-    demo: false,
+const challenges = dataset.challengeCatalog.challenges.map((challenge) => ({
+  id: challenge.id,
+  originalId: challenge.sourceChallengeId,
+  title: challenge.title,
+  // Nessun testo derivato da writeup/soluzioni viene copiato finché non è autorizzato.
+  description: '',
+  statement: '',
+  category: challenge.category ?? null,
+  difficulty: null,
+  score: null,
+  author: challenge.author ?? null,
+  edition: challenge.edition ?? null,
+  path: null,
+  publishedAt: null,
+  state: null,
+  available: true,
+  sourceUrl: challenge.sourceUrl ?? null,
+  attachments: [],
+  tags: [],
+  metadata: {
+    challengeType: null,
+    hintsCount: null,
+    ignoredSensitiveFields: ['officialDescription', 'solutionText', 'writeupText', 'flags', 'derivedDescription', 'derivedTags'],
+    learningGoals: [],
+    hintTopics: [],
+    publicationGate: dataset.publicationGate?.defaultDecision ?? 'DENY',
+    derivedDescriptionExcluded: Boolean(challenge.description?.derived),
+    verification: challenge.verification?.status ?? null,
+    duplicateSourceId: challenge.duplicateSourceId === true,
+  },
+  provenance: {
     source: sourceName,
-    externalUrl: challenge.sourceUrl ?? null,
-  };
-});
+    importedAt: dataset.generatedAt,
+    verified: false,
+    status: challenge.verification?.status ?? null,
+  },
+  demo: false,
+  source: sourceName,
+  externalUrl: challenge.sourceUrl ?? null,
+}));
 
 const serialized = JSON.stringify(challenges);
-if (/flag\s*\{[^{}]+\}/i.test(serialized)) {
-  console.error('Errore: una flag è presente nel catalogo applicativo. Import interrotto.');
+const forbiddenReasons = detectForbiddenContent(serialized);
+if (/flag\s*\{[^{}]+\}/i.test(serialized) || forbiddenReasons.length) {
+  console.error(`Errore: contenuto non ammesso nel catalogo applicativo (${forbiddenReasons.join(', ') || 'flag letterale'}). Import interrotto.`);
   process.exit(1);
 }
 if (hasForbiddenKeys(challenges) || serialized.includes('solutionArchive')) {
@@ -156,7 +143,8 @@ const report = {
   },
   limitations: [
     'Il catalogo deriva da fonti pubbliche e non è il catalogo ufficiale Training.',
-    'Nessuna descrizione ufficiale è disponibile: ogni testo mostrato è esplicitamente derivato da una fonte di soluzione.',
+    'Nessuna descrizione ufficiale è disponibile: description e statement sono vuoti e il testo derivato da writeup/soluzioni resta escluso.',
+    'I tag derivati dalle fonti di soluzione non sono stati copiati nel catalogo applicativo.',
     'Il Solution Archive non è stato importato e non è accessibile da frontend o API pubbliche.',
     'La completezza non è verificabile senza un export autorizzato.',
     'La repository community non dichiara licenza: non pubblicare o caricare su Cloudflare i suoi contenuti senza autorizzazione.',

@@ -12,16 +12,17 @@
   },
   "counts": {
     "discovered": 155,
-    "imported": 465,
-    "challengeCatalogRecords": 465,
-    "knowledgeBaseDocuments": 1125,
+    "imported": 408,
+    "challengeCatalogRecords": 408,
+    "knowledgeBaseDocuments": 0,
     "solutionArchiveDocumentsExcluded": 348,
-    "recordsWithMissingFields": 237,
+    "recordsWithMissingFields": 408,
     "officialTotal": null
   },
   "limitations": [
     "Il catalogo deriva da fonti pubbliche e non è il catalogo ufficiale Training.",
-    "Nessuna descrizione ufficiale è disponibile: ogni testo mostrato è esplicitamente derivato da una fonte di soluzione.",
+    "Nessuna descrizione ufficiale è disponibile: description e statement sono vuoti e il testo derivato da writeup/soluzioni resta escluso.",
+    "I tag derivati dalle fonti di soluzione non sono stati copiati nel catalogo applicativo.",
     "Il Solution Archive non è stato importato e non è accessibile da frontend o API pubbliche.",
     "La completezza non è verificabile senza un export autorizzato.",
     "La repository community non dichiara licenza: non pubblicare o caricare su Cloudflare i suoi contenuti senza autorizzazione."

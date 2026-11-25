@@ -1,12 +1,13 @@
 # OliDuck — Audit sicurezza e qualità della Knowledge Base RAG
 
-Stato: **audit read-only**. Nessuna correzione alla pipeline è stata applicata; le modifiche consigliate sono proposte ma non implementate. Workers AI non è stato attivato, il frontend non è stato modificato, nessun dato è stato pubblicato o caricato su Cloudflare, nessun file sorgente o allegato è stato eseguito e l'archivio ZIP non è stato estratto.
+Stato: **audit completato e bonifica applicata**. Le correzioni alla pipeline e agli artifact del dataset sono state implementate nella Fase 2; il dettaglio è nella sezione 10 e in [`REMEDIATION-REPORT.md`](REMEDIATION-REPORT.md). Workers AI non è stato attivato, il frontend e `public/data/` non sono stati modificati, nessun dato è stato pubblicato o caricato su Cloudflare, nessun file sorgente o allegato è stato eseguito e l'archivio ZIP non è stato estratto.
 
-Branch: `feature/oliduck-app` — commit esaminato: `202bfe1`.
+Branch: `feature/oliduck-app` — commit esaminato nell'audit: `202bfe1` — audit versionato in `c43e3ab`.
+Le sezioni 1–9 conservano lo stato **pre-bonifica** come evidenza storica dell'audit; la sezione 10 descrive lo stato corrente.
 
 ---
 
-## 1. Architettura attuale della Knowledge Base
+## 1. Architettura esaminata (pre-bonifica)
 
 ### 1.1 Generazione degli artifact
 
@@ -86,7 +87,7 @@ Inventario: 444 file totali, di cui 386 di contenuto e 58 metadati `.git/`. Ruol
 
 ## 3. Problemi rilevati
 
-| ID | Gravità | Finding | Evidenza | Correzione proposta (non applicata) |
+| ID | Gravità | Finding | Evidenza (pre-bonifica) | Correzione / esito (Fase 2) |
 | --- | --- | --- | --- | --- |
 | **A1** | Alta | `derived-context` contiene indizi risolutivi, non solo contesto descrittivo. | 228 chunk `derived-context`; 162 derivano da `official-writeups/`. Una scansione semantica ha individuato almeno 13 chunk con indicazioni operative esplicite, es. `oc-2021-nazionale-144` ("La flag viene checkata utilizzandola come input di un sudoku"), `oc-2021-nazionale-145` (decifratura quattro caratteri alla volta), `oc-2021-nazionale-147` (necessità di ottenere RCE), `oc-2023-camp-3-393` (richiesta HTTP con metodo custom), `oc-2023-territoriale-401` (presenza di una `win function`). | Escludere `derived-context` dal RAG finché non è revisionato. Se necessario, creare una classe `reviewed-hint` con testo riscritto a mano, senza passaggi operativi, e mai etichettato come descrizione ufficiale. |
 | **A2** | Alta | `challenge-overview` inserisce nel testo del chunk l'elenco dei percorsi sorgente, inclusi writeup e soluzioni. | 465/465 chunk `challenge-overview` contengono la riga `Fonte: ...`; 460/465 contengono percorsi `official-writeups/`, `community-solutions/`, `writeup` o `solution`. | Non serializzare `sourceRefs` nel testo del chunk. Tenere i percorsi solo nei campi strutturati usati per le citazioni, e mostrare all'utente solo metadati autorizzati. |
@@ -203,7 +204,7 @@ Non possono essere usati ora: writeup completi, script community, flag, allegati
 
 ## 8. Modifiche consigliate per una futura implementazione RAG
 
-Nessuna delle seguenti azioni è stata applicata.
+Le azioni 1–8 sono state applicate nella Fase 2. I punti 9–12 restano procedure future: il retrieval server-side richiede una decisione separata e il Solution Archive resta un archivio locale, non una risorsa distribuita.
 
 1. **Schema di classificazione**: aggiungere `classification`, `tutorAllowed`, `reviewStatus`, `publicExposure`, `restricted` a ogni documento e chunk. Usare questi campi come filtro obbligatorio nel retrieval.
 2. **Gate di licenza**: indicizzare solo documenti con `licenseVerified === true` e `tutorAllowed === true`. Mantenere i contenuti community in locale, senza upload su Cloudflare.
@@ -231,3 +232,58 @@ Nessuna delle seguenti azioni è stata applicata.
 - Aggiunti test read-only in `tests/security-audit.test.mjs` per separazione, provenienza, licenze e assenza di esposizione.
 
 Archivi ZIP non estratti, script/allegati delle fonti non eseguiti, Workers AI non attivato, frontend non modificato, `public/data/` non modificato.
+
+---
+
+## 10. Stato dopo la bonifica (Fase 2)
+
+### 10.1 Correzioni applicate
+
+| Finding | Correzione effettiva |
+| --- | --- |
+| A1 | I documenti `derived-context`, `concept-index` e `challenge-overview` restano nel solo inventario `publicationGate.excludedDocuments`; non entrano più in `learningKnowledgeBase` né in `rag-index.json`. I 228 chunk derivati da writeup/soluzioni sono stati tutti esclusi. |
+| A2 | Le righe `Fonte:` non sono più serializzate nel testo dei candidati KB. I percorsi restano solo nei campi strutturati (`sourceRefs`, `sourceId`, `sourcePath`, `sourceRepository`, `sourceCommit`, `license`, `provenanceType`, `documentType`). |
+| A3 | Il gate richiede `license.verified === true`, `publicationAllowed === true` e `reviewStatus === 'approved'`. Tutti i documenti con licenza non verificata sono esclusi. |
+| A4 | La redaction protegge i percorsi sorgente prima di cercare token Base64; un percorso `community-solutions/...` non viene più trasformato in `[TOKEN_RIMOSSO]`. |
+| A5 | I placeholder sono protetti durante la pulizia Markdown e i placeholder deformati vengono ripristinati ai valori esatti. |
+| A6 | `roleOf()` usa il percorso relativo alla repository: `community-solutions/Introduzione/...` è ora classificato `learning-material`. La licenza resta non verificata, quindi quei file non sono autorizzati per il tutor. |
+| A7 | `generatedAt` resta lo snapshot deterministico delle fonti; il report dichiara esplicitamente che non è una data di build. |
+| A8 | Ogni documento e chunk ha `classification`, `documentType`, `provenanceType`, `publicationAllowed`, `reviewStatus` e `publicationGate`. Le classificazioni ammesse sono solo `official-description` e `learning-material`. |
+| A9 | `import-dataset.mjs` non copia più `description.derived.text` in `description`/`statement`; i tag derivati non sono copiati. |
+| A10 | La validazione dell'importatore usa gli stessi pattern del gate e blocca flag con parentesi graffe/quadre/tonde, prefissi `flag`, `ITA`, `ITASEC`, `CTF`, `OliDuck`, forme con underscore e placeholder deformati. |
+| A11 | Il Solution Archive resta local-only con 348 documenti, `exposePublicly: false`, `cloudflareUploadAllowed: false` e `tutorAllowed: false`. Nessun upload o pubblicazione è stato effettuato. |
+| A12 | Gli ID restano invariati; non è stata inventata alcuna identità semantica alternativa. |
+
+### 10.2 Conteggi correnti
+
+| Metrica | Valore |
+| --- | ---: |
+| Challenge catalog | 408 |
+| Candidati KB valutati dal gate | 1050 |
+| Documenti KB ammessi | **0** |
+| Documenti KB esclusi | 1050 |
+| Chunk RAG autorizzati | **0** |
+| Documenti Solution Archive | 348 |
+| File inventariati | 444 |
+| Documenti `learning-material` riconosciuti | 57 |
+
+Il corpus RAG autorizzato è **vuoto**: non esistono descrizioni ufficiali nelle fonti e il materiale didattico riclassificato nella repository community non ha licenza verificata. Non è stato inventato alcun contenuto sostitutivo.
+
+### 10.3 Limiti residui
+
+- Il RAG **non è pronto**: non ci sono documenti autorizzati da indicizzare.
+- Il retrieval server-side, Vectorize e Workers AI non sono implementati né attivati; `rag-index.json` non è caricato dal runtime.
+- Le descrizioni derivate restano nel solo dataset locale di ricerca, con provenienza esplicita, ma non nel catalogo applicativo.
+- La completezza del catalogo ufficiale resta non verificabile senza un export autorizzato.
+- Il Solution Archive contiene flag reali: le restrizioni nei metadati non sostituiscono un controllo di accesso filesystem/deploy.
+- La licenza dei singoli allegati resta non dichiarata separatamente; non ne viene assunto il riutilizzo.
+- `generatedAt` continua a indicare lo snapshot delle fonti, non l'istante della build.
+
+### 10.4 Verifiche dopo la bonifica
+
+- `npm test`: eseguito, con 10 test dedicati alla bonifica più i test preesistenti.
+- `npm run dataset:build` e `npm run dataset:import`: eseguiti senza `--apply`.
+- Generazione deterministica: due esecuzioni producono hash identici per tutti gli artifact.
+- Nessun chunk derivato da writeup/soluzione, nessuna flag, nessun percorso sorgente e nessun placeholder deformato nel corpus tutor.
+- `public/data/challenges.json` e `public/data/import-report.json` invariati.
+- `git diff --check`: eseguito a fine intervento.
