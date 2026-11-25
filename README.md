@@ -1,40 +1,38 @@
 # OliDuck — OliCyber Training Assistant
 
-OliDuck è una piattaforma web indipendente per allenarsi e studiare in preparazione alle Olimpiadi Italiane di Cybersicurezza (OliCyber). Il nome unisce **OliCyber** e il concetto di **rubber duck debugging**.
+OliDuck è un workspace didattico indipendente per prepararsi alle Olimpiadi Italiane di Cybersicurezza. Il nome unisce **OliCyber** e il concetto di **rubber duck debugging**.
 
-Il prodotto non è un chatbot generico: è un workspace in cui una **Challenge Library** è integrata con un **tutor AI contestuale**. Ogni conversazione è associata alla challenge selezionata e segue un metodo di hint progressivi: lo studente viene guidato senza ricevere subito flag o soluzioni complete.
+L'interfaccia ha **esattamente due pannelli**: la **Challenge Library** (~40%) e l'**OliDuck Assistant** (~60%). Un splitter trascinabile permette di ridimensionarle (22–72%), con espansione, reset, persistenza della larghezza e selezione a tab su mobile. I dettagli della challenge aprono un drawer in overlay: non esiste una terza colonna e la chat resta sempre utilizzabile.
 
-L'interfaccia riprende la famiglia cromatica e il linguaggio visivo del portale OliCyber (blu `#1b4778` / `#1e5ea4`, superfici chiare, accento rosso `#f33c3c`, card sobrie, tipografia sans-serif), con un'identità originale:logo e favicon a forma di anatra con richiamo alla cybersecurity.
+Il tutor segue un metodo di hint progressivi: aiuta a comprendere il problema e a verificare il ragionamento senza fornire flag o soluzioni complete.
 
 ---
 
 ## Stato del progetto
 
-Repository inizialmente vuoto: l'applicazione è stata creata da zero con HTML, CSS e JavaScript vanilla (ES Modules), senza framework o dipendenze frontend. Il backend è implementato con Cloudflare Pages Functions e usa Workers AI quando il binding è configurato.
+Ramo attivo: `feature/oliduck-app`.
 
-### Funzionalità implementate e verificate
+- [x] Workspace a due pannelli con splitter, min/max, reset, persistenza e responsive a due tab.
+- [x] Libreria v2 con ricerca, filtri derivati dai dati reali del catalogo, ordinamento, conteggio, stati personali, selezione e lista virtualizzata.
+- [x] Drawer dei dettagli con testo, provenienza, link originali e allegati eventuali.
+- [x] Assistant con **modalità generale** e conversazioni separate per challenge, contesto ricostruito **solo lato server**, streaming SSE cumulativo, errori con retry, annullamento sicuro e supporto IME.
+- [x] Persistenza localStorage v2 con migrazione v1→v2, fallback in memoria e cancellazione dei dati.
+- [x] Catalogo statico v2 con 7 challenge **DEMO** esplicitamente contrassegnate, nessun flag e nessun link inventato.
+- [x] `GET /api/status` e `POST /api/chat` con validazione, limiti, rate limiting per isolato e gestione errori senza esporre dettagli interni.
+- [x] Modello AI centralizzato e verificato: `@cf/meta/llama-3.3-70b-instruct-fp8-fast`.
+- [x] Importatore offline per export ufficiali autorizzati, con report di provenienza.
+- [x] 31 test automatici (`node:test`) su backend, catalogo, import, store, UI e interazioni.
 
-- [x] Header con logo originale, navigazione, stato assistente, impostazioni e informazioni.
-- [x] Challenge Library con ricerca, filtri per categoria/difficoltà, conteggio, stati e selezione.
-- [x] Challenge Workspace con testo, obiettivi, fonti, allegati eventuali e cambio stato (Da fare → In corso → Completata).
-- [x] Pannello assistente con chat per challenge, cronologia, invio con Invio, stato di generazione, errori con retry, cancellazione con conferma e riduzione/espansione.
-- [x] Messaggio iniziale contestuale e messaggi separati per ID challenge.
-- [x] Persistenza localStorage versionata (stati, conversazioni, preferenze, ultima challenge selezionata) con fallback in memoria e cancellazione dei dati.
-- [x] Catalogo JSON statico con 7 challenge **DEMO** esplicitamente contrassegnate, nessun flag e nessun link inventato.
-- [x] `GET /api/status` e `POST /api/chat` con validazione, limiti, rate limiting per isolato, protezione dell'origine e gestione errori.
-- [x] System prompt dedicato lato server con regole didattiche e anti-divulgazione.
-- [x] Modalità DEMO esplicita quando il binding AI assente; mai presentata come risposta AI reale.
-- [x] Client API pronto per streaming SSE (callback token già integrato nell'UI).
-- [x] Design responsive a tre pannelli su desktop e a tab su schermi piccoli, temi chiaro/scuro, focus visibili, `aria-live`, dialog accessibili, `prefers-reduced-motion`.
-- [x] 15 test automatici (`node:test`) su store, catalogo, validazione, prompt, rate limit, handler backend e flusso UI.
+### Limiti noti
 
-### Ancora da configurare / limiti noti
+- **Catalogo non ufficiale**: le challenge incluse sono esempi didattici; `status: "unverified-demo"`.
+- **Completezza non verificabile**: il numero totale ufficiale delle challenge non è pubblico e le API del portale richiedono login.
+- **Binding Workers AI da configurare**: senza di esso il backend risponde in modalità DEMO esplicita.
+- **Streaming lato server**: il client supporta SSE cumulativo; l'handler attuale restituisce JSON completo.
+- **Rate limiting in memoria**: per isolato; in produzione affiancare WAF / Rate Limiting Rules.
+- Nessun account, database o sincronizzazione cloud: i dati restano nel browser.
 
-- [ ] **Binding Workers AI** e (opzionale) `AI_MODEL`: senza di essi il backend resta in modalità DEMO. Vedi [docs/CLOUDFLARE.md](docs/CLOUDFLARE.md).
-- [ ] **Dataset reale**: le challenge incluse sono esempi didattici. Non sono state inventate challenge, flag o URL ufficiali.
-- [ ] **Streaming effettivo lato server**: il client lo supporta, ma il backend restituisce oggi JSON completo.
-- [ ] **Rate limiting distribuito**: quello attuale è in memoria per isolato; in produzione usare anche Cloudflare WAF / Rate Limiting Rules.
-- [ ] Nessun login, database, sincronizzazione cloud o statistiche: scelta deliberata. I dati restano nel browser.
+La ricerca approfondita sulle fonti pubbliche è in [`docs/PUBLIC-SOURCES-RESEARCH.md`](docs/PUBLIC-SOURCES-RESEARCH.md).
 
 ---
 
@@ -43,16 +41,14 @@ Repository inizialmente vuoto: l'applicazione è stata creata da zero con HTML, 
 Richiede **Node.js 20+**.
 
 ```bash
-git clone https://github.com/perassilorenzo/olicyber-duck.git
-cd olicyber-duck
 npm install
 npm test
-npm run dev
+npm run dev -- --port 8788
 ```
 
-Apri `http://localhost:8788`. `npm run dev` avvia `wrangler pages dev public`: la directory `public/` contiene i file statici e la cartella `functions/` viene rilevata automaticamente come Pages Functions.
+Apri `http://localhost:8788`. `npm run dev` avvia `wrangler pages dev public`: `public/` contiene i file statici e `functions/` viene rilevato come Pages Functions.
 
-Se vuoi solo servire i file statici senza backend puoi usare un qualsiasi server statico sulla cartella `public/`, ma in quel caso `/api/chat` e `/api/status` non esisteranno e l'assistente mostrerà un errore comprensibile.
+Per servire solo i file statici è sufficiente un qualsiasi server sulla cartella `public/`, ma in quel caso `/api/status` e `/api/chat` non esisteranno e l'assistente mostrerà un errore comprensibile.
 
 ---
 
@@ -60,31 +56,41 @@ Se vuoi solo servire i file statici senza backend puoi usare un qualsiasi server
 
 ```
 ├── public/
-│   ├── index.html              # shell dell'applicazione
-│   ├── favicon.svg             # identità OliDuck
-│   ├── styles/main.css         # design system, layout, responsive
-│   ├── data/challenges.json    # catalogo statico separato dai dati personali
+│   ├── index.html              # shell a due pannelli + drawer
+│   ├── favicon.svg
+│   ├── styles/main.css         # design system, splitter, responsive, temi
+│   ├── data/
+│   │   ├── challenges.json     # catalogo statico v2, separato dai dati personali
+│   │   └── import-report.json  # provenienza e limiti del catalogo
 │   └── src/
 │       ├── main.js             # orchestrazione
-│       ├── store.js            # localStorage versionato e fallback
-│       ├── catalog.js          # caricamento e filtri
-│       ├── library.js          # pannello sinistro
-│       ├── workspace.js        # pannello centrale
-│       ├── assistant.js        # pannello destro
-│       ├── api.js              # client /api con supporto SSE
+│       ├── store.js            # localStorage v2, migrazioni e preferenze
+│       ├── catalog.js          # loader v2, facet, filtri, ordinamento
+│       ├── library.js          # lista virtualizzata e controlli
+│       ├── panels.js           # splitter, espansione, reset, tab mobile
+│       ├── details.js          # drawer dei dettagli
+│       ├── assistant.js        # chat generale/contestuale, SSE, annullamento
+│       ├── api.js              # client /api
 │       ├── icons.js            # icone SVG
 │       └── utils.js            # DOM, toast, conferme
 ├── functions/
 │   ├── api/chat.js             # POST /api/chat
 │   ├── api/status.js           # GET /api/status
 │   └── lib/
-│       ├── system-prompt.js    # prompt del tutor (solo server)
+│       ├── model.js            # DEFAULT_MODEL (unico punto di verità)
+│       ├── catalog.js          # catalogo authoritative lato server
+│       ├── system-prompt.js    # prompt statico + confine casuale + redaction
 │       ├── validate.js         # validazione richieste
 │       ├── demo.js             # risposta simulata esplicita
 │       └── rate-limit.js       # anti-abuso in memoria
-├── tests/                      # test node:test
+├── scripts/import-catalog.mjs  # import autorizzato offline
+├── tests/                      # 5 file node:test
+├── docs/
+│   ├── CLOUDFLARE.md
+│   ├── CATALOG-IMPORT.md
+│   └── PUBLIC-SOURCES-RESEARCH.md
 ├── wrangler.toml
-└── docs/CLOUDFLARE.md
+└── package.json
 ```
 
 ---
@@ -94,7 +100,19 @@ Se vuoi solo servire i file statici senza backend puoi usare un qualsiasi server
 ### `GET /api/status`
 
 ```json
-{ "mode": "demo", "model": null, "note": "Binding AI non configurato: il backend risponde in modalità DEMO." }
+{
+  "mode": "demo",
+  "model": null,
+  "note": "Binding AI non configurato: il backend risponde in modalità DEMO.",
+  "catalog": {
+    "schemaVersion": 2,
+    "status": "unverified-demo",
+    "verified": false,
+    "imported": 7,
+    "source": "OliDuck DEMO (non ufficiale)",
+    "lastSync": null
+  }
+}
 ```
 
 Con AI configurata: `mode: "ai"` e `model` impostato.
@@ -104,67 +122,89 @@ Con AI configurata: `mode: "ai"` e `model` impostato.
 ```json
 {
   "challengeId": "demo-web-01",
-  "challenge": {
-    "id": "demo-web-01", "title": "...", "category": "Web", "difficulty": "Facile",
-    "description": "...", "statement": "...", "tags": [], "learningGoals": [],
-    "hintTopics": [], "demo": true
-  },
   "message": "Come posso iniziare?",
-  "history": [{ "role": "user", "content": "..." }]
+  "history": [{ "role": "user", "content": "Ho letto il testo" }]
 }
 ```
+
+Per la conversazione generale usare `"challengeId": "general"`.
+
+Il campo `challenge` **non è accettato**: se inviato viene ignorato. Il server ricostruisce il contesto leggendo il catalogo in `functions/lib/catalog.js`.
 
 Risposta:
 
 ```json
-{ "reply": "...", "mode": "demo" }
+{ "reply": "...", "mode": "demo", "challengeId": "demo-web-01" }
 ```
 
-oppure `mode: "ai"` con `model`. Errori: `400` (validazione), `403` (origine non consentita), `413` (body troppo grande), `429` (troppe richieste, con `Retry-After`), `502` (modello non disponibile).
+oppure `mode: "ai"` con `model`. Errori: `400` (validazione/challenge sconosciuta), `403` (origine non consentita), `413` (body > 16.000 byte), `415` (Content-Type errato), `429` (rate limit, con `Retry-After`), `502` (modello non disponibile).
 
-Limiti: body 16 KB, messaggio 4.000 caratteri, cronologia 12 messaggi / 8.000 caratteri, contesto challenge 6.000 caratteri. Il contesto inviato dal client viene trattato come **dato non attendibile** e inserito delimitato nel prompt: non può modificare le istruzioni del sistema.
+Limiti: messaggio 4.000 caratteri, cronologia 12 messaggi / 8.000 caratteri. Il contesto e la cronologia sono inseriti in messaggi `user` separati da un confine casuale generato per ogni richiesta: non possono modificare il system prompt.
 
 ---
 
 ## Dati locali
 
-Chiave: `oliduck:state`, `version: 1`.
+Chiave: `oliduck:state`, `version: 2`.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "statuses": { "demo-web-01": "in-progress" },
-  "conversations": { "demo-web-01": [{ "id": "...", "role": "user", "content": "...", "createdAt": "..." }] },
+  "conversations": {
+    "general": [{ "id": "...", "role": "user", "content": "..." }],
+    "demo-web-01": []
+  },
   "selectedChallengeId": "demo-web-01",
-  "preferences": { "theme": "light", "assistantCollapsed": false, "mobileView": "workspace", "filters": {} }
+  "preferences": {
+    "theme": "light",
+    "panelWidth": 40,
+    "activePanel": "assistant",
+    "filters": {
+      "query": "", "category": "all", "difficulty": "all", "edition": "all",
+      "path": "all", "status": "all", "sort": "title-asc"
+    }
+  }
 }
 ```
 
-La normalizzazione rimuove dati malformati; le migrazioni future si aggiungono in `store.js` (`migrate`). Se `localStorage` non è disponibile l'app resta usabile in memoria e lo segnala nelle impostazioni. La cancellazione totale richiede conferma e rimuove la chiave. **I dati non si sincronizzano tra browser o dispositivi.**
+Dati ufficiali, dati personali, conversazioni e preferenze restano separati. Aggiornare `challenges.json` non cancella progressi o chat. Se `localStorage` non è disponibile l'app resta usabile in memoria e lo segnala nelle impostazioni.
 
 ---
 
-## Catalogo delle challenge
+## Catalogo e importazione
 
-Il catalogo è `public/data/challenges.json`, separato dai dati personali. Campi: `id`, `title`, `category`, `difficulty`, `description`, `statement`, `source`, `externalUrl`, `tags`, `learningGoals`, `hintTopics`, `demo`. Per importare challenge reali: aggiungere voci con `demo: false`, `source` verificata ed `externalUrl` valido; non inserire flag nei dati dimostrativi. La UI mostra automaticamente il badge DEMO e i link esterni solo se presenti.
+Il catalogo v2 è `public/data/challenges.json`. Ogni record conserva `provenance` (`source`, `sourceUrl`, `verified`), campi origine (`originalId`, `edition`, `path`, `score`, `author`, `state`, `available`) e allegati separati dal testo.
+
+Per importare un export ottenuto legalmente dall'utente:
+
+```bash
+node scripts/import-catalog.mjs \
+  --file /percorso/export-autorizzato.json \
+  --expected-total 123 \
+  --source-name "Export admin OliCyber 2026"
+```
+
+L'importatore non effettua richieste di rete, non legge token/cookie/sessioni, rimuove campi sensibili (`flag`, `solution`, `writeup`) e interrompe l'import se rileva pattern di flag. Dettagli: [`docs/CATALOG-IMPORT.md`](docs/CATALOG-IMPORT.md).
 
 ---
 
 ## Sicurezza
 
-- Nessuna API key, token o segreto nel frontend: la comunicazione con il provider AI avviene solo nel Pages Function.
-- Nessun salvataggio server-side delle conversazioni.
-- Validazione di tutti i campi, limiti di dimensione, controllo `Origin`, rate limiting per IP (hash SHA-256) e header `no-store`/`nosniff`.
-- Il system prompt è in `functions/lib/system-prompt.js`, fuori dal bundle frontend.
+- Nessuna API key, token o segreto nel frontend: il provider AI è chiamato solo dal Pages Function.
+- Nessuna conversazione salvata server-side.
+- Validazione di tutti i campi, limiti byte reali, controllo `Origin`, rate limiting per IP (hash SHA-256) e header `no-store` / `nosniff`.
+- System prompt statico lato server; dati non attendibili delimitati; redaction best-effort dell'output.
+- I writeup ufficiali contengono soluzioni e flag reali: non sono usati come catalogo né come contesto AI.
 
 ---
 
 ## Comandi
 
 ```bash
-npm test        # test automatici
-npm run dev     # sviluppo locale con Pages Functions
-npm run deploy  # deploy su Cloudflare Pages (richiede autenticazione wrangler)
+npm test        # 31 test automatici
+npm run dev     # sviluppo con Pages Functions
+npm run deploy  # deploy Cloudflare Pages (richiede autenticazione)
 ```
 
-Per la configurazione Cloudflare completa, binding AI, variabili, deploy e troubleshooting: [docs/CLOUDFLARE.md](docs/CLOUDFLARE.md).
+Configurazione Cloudflare, binding AI e troubleshooting: [`docs/CLOUDFLARE.md`](docs/CLOUDFLARE.md).
