@@ -1,104 +1,325 @@
 {
-  "version": 1,
-  "note": "Catalogo dimostrativo. Tutte le challenge sono esempi didattici creati per OliDuck: non sono challenge ufficiali OliCyber e non contengono flag o allegati reali.",
+  "schemaVersion": 2,
+  "status": "unverified-demo",
+  "source": {
+    "name": "OliDuck DEMO (non ufficiale)",
+    "portal": "https://training.olicyber.it/challenges",
+    "endpointObserved": "/api/challenges (LOGIN_REQUIRED)",
+    "authorizedExportUsed": false,
+    "importedAt": null,
+    "verified": false,
+    "note": "Catalogo dimostrativo locale. Non è il catalogo ufficiale OliCyber Training."
+  },
+  "completeness": {
+    "expectedTotal": null,
+    "discovered": 7,
+    "imported": 7,
+    "duplicates": 0,
+    "missingFields": 7,
+    "unavailable": 0,
+    "verifiedAgainstSource": false,
+    "report": "/data/import-report.json"
+  },
   "challenges": [
     {
       "id": "demo-web-01",
+      "originalId": null,
       "title": "Il parametro dimenticato",
-      "category": "Web",
-      "difficulty": "Facile",
       "description": "Una pagina di ricerca mostra messaggi diversi a seconda di un parametro nascosto.",
       "statement": "DEMO — Un piccolo sito di esempio accetta il parametro `debug` nella query string. Quando il parametro è presente, la pagina mostra informazioni che normalmente non dovrebbero essere visibili.\n\nL'obiettivo didattico è capire come un input non previsto possa modificare il comportamento di un'applicazione web.\n\nNon è presente alcun flag reale: concentrati sul ragionamento, non su una risposta finale.",
-      "source": "DEMO OliDuck",
-      "externalUrl": null,
-      "tags": ["HTTP", "query string", "input validation"],
+      "category": "Web",
+      "difficulty": "Facile",
+      "score": null,
+      "author": null,
+      "edition": null,
+      "path": null,
+      "publishedAt": null,
+      "state": "demo",
+      "available": true,
+      "sourceUrl": null,
+      "attachments": [],
+      "tags": [
+        "HTTP",
+        "query string",
+        "input validation"
+      ],
+      "metadata": {
+        "learningGoals": [
+          "Leggere una richiesta HTTP",
+          "Riconoscere input non fidati",
+          "Capire la validazione lato server"
+        ],
+        "hintTopics": [
+          "query string",
+          "parametri HTTP",
+          "validazione dell'input"
+        ]
+      },
+      "provenance": {
+        "source": "OliDuck DEMO",
+        "importedAt": null,
+        "verified": false
+      },
       "demo": true,
-      "learningGoals": ["Leggere una richiesta HTTP", "Riconoscere input non fidati", "Capire la validazione lato server"],
-      "hintTopics": ["query string", "parametri HTTP", "validazione dell'input"]
+      "source": "DEMO OliDuck",
+      "externalUrl": null
     },
     {
       "id": "demo-crypto-01",
+      "originalId": null,
       "title": "Il turno che si ripete",
-      "category": "Crypto",
-      "difficulty": "Facile",
       "description": "Un testo cifrato con sostituzione rispetta una regola semplice e regolare.",
       "statement": "DEMO — Ti viene fornita una frase cifrata con un cifrario a sostituzione monotona: ogni lettera del plaintext è sempre sostituita dalla stessa lettera del ciphertext.\n\nLa frase è in italiano e contiene spazi e punteggiatura invariati. Non ci sono flag: lo scopo è esercitare l'analisi delle frequenze e il ragionamento sulle lettere più comuni.",
-      "source": "DEMO OliDuck",
-      "externalUrl": null,
-      "tags": ["cifrario a sostituzione", "analisi delle frequenze"],
+      "category": "Crypto",
+      "difficulty": "Facile",
+      "score": null,
+      "author": null,
+      "edition": null,
+      "path": null,
+      "publishedAt": null,
+      "state": "demo",
+      "available": true,
+      "sourceUrl": null,
+      "attachments": [],
+      "tags": [
+        "cifrario a sostituzione",
+        "analisi delle frequenze"
+      ],
+      "metadata": {
+        "learningGoals": [
+          "Analisi delle frequenze",
+          "Pattern delle parole",
+          "Cifrari classici"
+        ],
+        "hintTopics": [
+          "frequenza delle lettere",
+          "parole corte",
+          "mappa di sostituzione"
+        ]
+      },
+      "provenance": {
+        "source": "OliDuck DEMO",
+        "importedAt": null,
+        "verified": false
+      },
       "demo": true,
-      "learningGoals": ["Analisi delle frequenze", "Pattern delle parole", "Cifrari classici"],
-      "hintTopics": ["frequenza delle lettere", "parole corte", "mappa di sostituzione"]
+      "source": "DEMO OliDuck",
+      "externalUrl": null
     },
     {
       "id": "demo-pwn-01",
+      "originalId": null,
       "title": "Il confine del buffer",
-      "category": "Binary Exploitation",
-      "difficulty": "Media",
       "description": "Un programma di esempio copia una stringa senza controllarne la lunghezza.",
       "statement": "DEMO — Un immaginario servizio didattico legge una riga di testo e la copia in un buffer di 32 byte senza verificarne la lunghezza. Il programma è compilato senza canary dello stack.\n\nNon esiste un binario reale da scaricare. L'obiettivo è comprendere il concetto di overflow del buffer, lo stack frame e il motivo per cui i controlli di limite sono importanti.",
-      "source": "DEMO OliDuck",
-      "externalUrl": null,
-      "tags": ["stack", "overflow", "C"],
+      "category": "Binary Exploitation",
+      "difficulty": "Media",
+      "score": null,
+      "author": null,
+      "edition": null,
+      "path": null,
+      "publishedAt": null,
+      "state": "demo",
+      "available": true,
+      "sourceUrl": null,
+      "attachments": [],
+      "tags": [
+        "stack",
+        "overflow",
+        "C"
+      ],
+      "metadata": {
+        "learningGoals": [
+          "Modello dello stack",
+          "Overflow del buffer",
+          "Difese di base"
+        ],
+        "hintTopics": [
+          "stack frame",
+          "indirizzo di ritorno",
+          "funzioni di copia non sicure"
+        ]
+      },
+      "provenance": {
+        "source": "OliDuck DEMO",
+        "importedAt": null,
+        "verified": false
+      },
       "demo": true,
-      "learningGoals": ["Modello dello stack", "Overflow del buffer", "Difese di base"],
-      "hintTopics": ["stack frame", "indirizzo di ritorno", "funzioni di copia non sicure"]
+      "source": "DEMO OliDuck",
+      "externalUrl": null
     },
     {
       "id": "demo-rev-01",
+      "originalId": null,
       "title": "La condizione nascosta",
-      "category": "Reverse Engineering",
-      "difficulty": "Media",
       "description": "Una funzione di controllo confronta due valori dopo una trasformazione semplice.",
       "statement": "DEMO — Uno pseudocodice didattico legge un numero intero, lo manipola con un'operazione bitwise e confronta il risultato con una costante. Se il confronto riesce, stampa un messaggio di successo simbolico.\n\nNon c'è un executable reale né una flag. L'obiettivo è esercitare la lettura del codice e il ragionamento sulle operazioni sui bit.",
-      "source": "DEMO OliDuck",
-      "externalUrl": null,
-      "tags": ["bitwise", "pseudocodice", "debug"],
+      "category": "Reverse Engineering",
+      "difficulty": "Media",
+      "score": null,
+      "author": null,
+      "edition": null,
+      "path": null,
+      "publishedAt": null,
+      "state": "demo",
+      "available": true,
+      "sourceUrl": null,
+      "attachments": [],
+      "tags": [
+        "bitwise",
+        "pseudocodice",
+        "debug"
+      ],
+      "metadata": {
+        "learningGoals": [
+          "Lettura di pseudocodice",
+          "Operazioni bitwise",
+          "Ingegneria al contrario"
+        ],
+        "hintTopics": [
+          "XOR",
+          "shift",
+          "confronto tra interi"
+        ]
+      },
+      "provenance": {
+        "source": "OliDuck DEMO",
+        "importedAt": null,
+        "verified": false
+      },
       "demo": true,
-      "learningGoals": ["Lettura di pseudocodice", "Operazioni bitwise", "Ingegneria al contrario"],
-      "hintTopics": ["XOR", "shift", "confronto tra interi"]
+      "source": "DEMO OliDuck",
+      "externalUrl": null
     },
     {
       "id": "demo-forensics-01",
+      "originalId": null,
       "title": "Il file che nasconde dati",
-      "category": "Forensics",
-      "difficulty": "Facile",
       "description": "Un file di testo contiene informazioni oltre a quelle visibili nell'editor.",
       "statement": "DEMO — Un file di esempio, apparentemente un normale documento di testo, contiene caratteri non stampabili tra le righe visibili. Nessun allegato è incluso in questa demo.\n\nL'obiettivo didattico è imparare a osservare la rappresentazione binaria di un file e a confrontare dimensioni e byte con quelli attesi.",
-      "source": "DEMO OliDuck",
-      "externalUrl": null,
-      "tags": ["byte", "encoding", "metadati"],
+      "category": "Forensics",
+      "difficulty": "Facile",
+      "score": null,
+      "author": null,
+      "edition": null,
+      "path": null,
+      "publishedAt": null,
+      "state": "demo",
+      "available": true,
+      "sourceUrl": null,
+      "attachments": [],
+      "tags": [
+        "byte",
+        "encoding",
+        "metadati"
+      ],
+      "metadata": {
+        "learningGoals": [
+          "Rappresentazione dei byte",
+          "Codifiche dei caratteri",
+          "Analisi di file sospetti"
+        ],
+        "hintTopics": [
+          "visualizzazione esadecimale",
+          "caratteri di controllo",
+          "UTF-8"
+        ]
+      },
+      "provenance": {
+        "source": "OliDuck DEMO",
+        "importedAt": null,
+        "verified": false
+      },
       "demo": true,
-      "learningGoals": ["Rappresentazione dei byte", "Codifiche dei caratteri", "Analisi di file sospetti"],
-      "hintTopics": ["visualizzazione esadecimale", "caratteri di controllo", "UTF-8"]
+      "source": "DEMO OliDuck",
+      "externalUrl": null
     },
     {
       "id": "demo-network-01",
+      "originalId": null,
       "title": "La richiesta fuori posto",
-      "category": "Network",
-      "difficulty": "Media",
       "description": "Una registrazione di traffico didattica contiene una richiesta non prevista.",
       "statement": "DEMO — Una cattura di rete immaginaria mostra normali richieste HTTP verso un server, più una richiesta con un metodo insolito e un header personalizzato. Non viene fornito alcun file PCAP.\n\nL'obiettivo è imparare a leggere una conversazione TCP/HTTP, distinguere richieste e risposte e individuare anomalie negli header.",
-      "source": "DEMO OliDuck",
-      "externalUrl": null,
-      "tags": ["HTTP", "header", "TCP"],
+      "category": "Network",
+      "difficulty": "Media",
+      "score": null,
+      "author": null,
+      "edition": null,
+      "path": null,
+      "publishedAt": null,
+      "state": "demo",
+      "available": true,
+      "sourceUrl": null,
+      "attachments": [],
+      "tags": [
+        "HTTP",
+        "header",
+        "TCP"
+      ],
+      "metadata": {
+        "learningGoals": [
+          "Lettura del traffico HTTP",
+          "Metodi e header",
+          "Individuazione di anomalie"
+        ],
+        "hintTopics": [
+          "metodi HTTP",
+          "header personalizzati",
+          "sequenza di richieste"
+        ]
+      },
+      "provenance": {
+        "source": "OliDuck DEMO",
+        "importedAt": null,
+        "verified": false
+      },
       "demo": true,
-      "learningGoals": ["Lettura del traffico HTTP", "Metodi e header", "Individuazione di anomalie"],
-      "hintTopics": ["metodi HTTP", "header personalizzati", "sequenza di richieste"]
+      "source": "DEMO OliDuck",
+      "externalUrl": null
     },
     {
       "id": "demo-misc-01",
+      "originalId": null,
       "title": "La regola del puzzle",
-      "category": "Miscellaneous",
-      "difficulty": "Difficile",
       "description": "Una sequenza di numeri segue una regola che non è subito evidente.",
       "statement": "DEMO — Una sequenza di numeri generata secondo una regola deterministica viene presentata senza spiegazioni. Non esiste una flag: la sfida didattica è formulare ipotesi, verificarle e scartare quelle sbagliate.\n\nQuesta challenge serve a esercitare il metodo di risoluzione di problemi, non una tecnica specifica di cybersecurity.",
-      "source": "DEMO OliDuck",
-      "externalUrl": null,
-      "tags": ["logica", "pattern", "problem solving"],
+      "category": "Miscellaneous",
+      "difficulty": "Difficile",
+      "score": null,
+      "author": null,
+      "edition": null,
+      "path": null,
+      "publishedAt": null,
+      "state": "demo",
+      "available": true,
+      "sourceUrl": null,
+      "attachments": [],
+      "tags": [
+        "logica",
+        "pattern",
+        "problem solving"
+      ],
+      "metadata": {
+        "learningGoals": [
+          "Formulazione di ipotesi",
+          "Verifica sistematica",
+          "Problem solving"
+        ],
+        "hintTopics": [
+          "differenze tra termini",
+          "rappresentazione binaria",
+          "ipotesi e verifica"
+        ]
+      },
+      "provenance": {
+        "source": "OliDuck DEMO",
+        "importedAt": null,
+        "verified": false
+      },
       "demo": true,
-      "learningGoals": ["Formulazione di ipotesi", "Verifica sistematica", "Problem solving"],
-      "hintTopics": ["differenze tra termini", "rappresentazione binaria", "ipotesi e verifica"]
+      "source": "DEMO OliDuck",
+      "externalUrl": null
     }
   ]
 }

@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": null,
+  "status": "unverified-demo",
+  "source": {
+    "name": "OliDuck DEMO (non ufficiale)",
+    "portal": "https://training.olicyber.it/challenges",
+    "endpointObserved": "/api/challenges",
+    "endpointResponse": "LOGIN_REQUIRED",
+    "authorizedExportUsed": false
+  },
+  "counts": {
+    "discovered": 7,
+    "imported": 7,
+    "duplicatesRemoved": 0,
+    "recordsWithMissingFields": 7,
+    "unavailableChallenges": 0,
+    "officialTotal": null
+  },
+  "categories": {
+    "Web": 1,
+    "Crypto": 1,
+    "Binary Exploitation": 1,
+    "Reverse Engineering": 1,
+    "Forensics": 1,
+    "Network": 1,
+    "Miscellaneous": 1
+  },
+  "limitations": [
+    "Il catalogo ufficiale è accessibile solo dopo autenticazione: /api/challenges risponde LOGIN_REQUIRED.",
+    "L'export admin richiede un token autorizzato e non è stato utilizzato.",
+    "Nessuna sessione, cookie o credenziale personale è stata richiesta o salvata.",
+    "Il numero totale ufficiale non è pubblico: la completezza non può essere verificata."
+  ],
+  "verifiedAgainstSource": false
+}
