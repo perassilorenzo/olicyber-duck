@@ -1,0 +1,11 @@
+name = "oliduck"
+compatibility_date = "2025-04-01"
+pages_build_output_dir = "public"
+
+# Il binding AI è opzionale: senza di esso il backend risponde in modalità DEMO.
+# Per abilitarlo, decommentare e sostituire <ACCOUNT_ID> con il proprio account:
+# [ai]
+# binding = "AI"
+
+# [vars]
+# AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8"
