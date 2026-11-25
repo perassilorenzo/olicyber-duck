@@ -80,6 +80,7 @@ Per servire solo i file statici è sufficiente un qualsiasi server sulla cartell
 │   └── lib/
 │       ├── model.js            # DEFAULT_MODEL (unico punto di verità)
 │       ├── catalog.js          # catalogo authoritative lato server
+│       ├── catalog-data.cjs    # ponte CJS per import JSON compatibile Wrangler 3/4
 │       ├── system-prompt.js    # prompt statico + confine casuale + redaction
 │       ├── validate.js         # validazione richieste
 │       ├── demo.js             # risposta simulata esplicita

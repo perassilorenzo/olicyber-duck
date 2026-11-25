@@ -1,5 +1,5 @@
 /** Catalogo authoritative lato server: il client non può scegliere il contesto. */
-import catalog from '../../public/data/challenges.json' with { type: 'json' };
+import catalog from './catalog-data.cjs';
 
 export const CATALOG_META = {
   schemaVersion: catalog.schemaVersion,

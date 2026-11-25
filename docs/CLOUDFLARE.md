@@ -56,6 +56,12 @@ npm run deploy
 
 La cartella `functions/` viene compilata automaticamente da Pages: non va inclusa nella build output directory.
 
+### Compatibilità Wrangler
+
+Le build Git-integrate di Pages compilano le Functions con una versione Wrangler gestita da Cloudflare (nel build fallito: `3.114.17`), indipendente dalla versione installata in locale o dichiarata in `package.json`. Il pinning di Wrangler 4 come `devDependency` non cambia quindi la compilazione eseguita da Pages.
+
+Per questo `functions/lib/catalog.js` non usa import attributes ESM (`with { type: 'json' }`), non supportati da Wrangler 3, ma importa `functions/lib/catalog-data.cjs`: il `require` statico del catalogo viene risolto in fase di bundle sia da Wrangler 3 sia da Wrangler 4, ed è supportato anche da Node nei test. Il catalogo resta una sola sorgente in `public/data/challenges.json`; non serve `nodejs_compat` e non vengono aggiunti dati o dipendenze.
+
 ## 4. Verifica
 
 ```bash
