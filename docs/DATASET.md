@@ -1,0 +1,78 @@
+# Dataset di ricerca OliDuck
+
+Questo documento descrive il dataset costruito dalle fonti pubbliche scaricate in
+`dataset-input/sources/` e generato in `dataset-input/`.
+
+## Fonti
+
+| Directory | Repository | Licenza | Uso consentito |
+| --- | --- | --- | --- |
+| `official-writeups/` | `OliCyberIT/OliCyber.IT-Writeups` | GPL-3.0 (file `LICENSE`) | metadati autorevoli e writeup; conservare la licenza in caso di redistribuzione |
+| `community-solutions/` | `Privitorta/Training-OliCyber.IT-solutions` | **nessuna licenza dichiarata** | analisi locale; **nessuna pubblicazione o upload su Cloudflare senza autorizzazione** |
+
+Le fonti sono state lette dal filesystem locale. Non sono state effettuate richieste di rete, non è stato eseguito alcun file proveniente dalle fonti e l'unico archivio ZIP presente non è stato estratto.
+
+## Comandi
+
+```bash
+npm run dataset:build
+npm run dataset:import
+```
+
+- `dataset:build` rigenera `REPORT.md`, `manifest.json`, `import-report.json`, `catalog.json` e `rag-index.json`.
+- `dataset:import` crea `dataset-input/derived/application-catalog.json` e il relativo report, **senza toccare `public/data/`**.
+- Per sostituire esplicitamente il catalogo applicativo:
+
+```bash
+npm run dataset:import -- --apply
+```
+
+L'overwrite produce uno catalogo con `status: "unverified-derived"`: non equivale a un export ufficiale verificato.
+
+## Struttura del dataset
+
+`dataset-input/catalog.json` contiene tre sezioni distinte:
+
+| Sezione | Contenuto | Esposizione |
+| --- | --- | --- |
+| `challengeCatalog` | ID, titolo, categoria, edizione, autore, provenienza, descrizione derivata, allegati citati | importabile solo dopo sanificazione |
+| `learningKnowledgeBase` | overview, contesto derivato, concetti tecnici, materiali didattici | indicizzata per RAG, senza flag e senza passaggi di soluzione |
+| `solutionArchive` | writeup ufficiali, script e soluzioni community | `exposePublicly: false`, non indicizzata, non importata |
+
+`rag-index.json` contiene solo chunk della Learning Knowledge Base. Ogni chunk conserva `challengeId`, `title`, `category`, `edition`, `source`, `docType` e `sourceRefs`. Il tutor non deve ricevere interi repository o writeup.
+
+## Schema degli ID
+
+- Challenge ufficiale: `oc-<edizioneSlug>-<challengeId>`, con suffisso `-r<numeroRiga>` solo quando l'ID sorgente è duplicato (caso noto: `726`).
+- Challenge community non agganciata: `cs-<evento>-<titolo-derivato-da-percorso>`.
+
+Gli ID non vengono mai assegnati in base a similarità di titolo. Un candidato community viene agganciato a una challenge ufficiale solo in presenza di:
+
+1. ID esplicito (`#challenge-<n>` o URL equivalente) nel testo della soluzione; oppure
+2. titolo normalizzato identico nella stessa edizione.
+
+Se le evidenze sono contrastanti o il titolo è ambiguo, il candidato resta una challenge separata e il conflitto viene segnalato.
+
+## Descrizioni
+
+Le fonti disponibili **non contengono descrizioni ufficiali**. Ogni record ha `description.official: null`.
+
+Il campo `description.derived` contiene, quando presente, il primo paragrafo utile estratto da una writeup o da un blocco citato di una soluzione community. La provenienza è sempre registrata con percorso e metodo. Questo testo non è mai etichettato come descrizione ufficiale e non entra nel catalogo come verità ufficiale.
+
+## Aggiornamenti ripetibili
+
+Il builder è deterministico e sovrascrive gli output. Per aggiornare le fonti:
+
+1. sostituire o aggiornare le directory in `dataset-input/sources/`;
+2. eseguire `npm run dataset:build`;
+3. eseguire `npm run dataset:import`;
+4. verificare `dataset-input/REPORT.md` e `dataset-input/import-report.json`.
+
+Gli ID derivano da percorsi e ID sorgente; i file sono identificati per SHA-256. Una nuova versione delle fonti aggiorna i record esistenti senza accumulare duplicati. Le cartelle `dataset-input/sources/` sono ignorate da Git: i materiali scaricati restano locali.
+
+## Limiti
+
+- Il numero totale ufficiale delle challenge Training non è pubblico: la completezza non è verificabile.
+- Il catalogo applicativo demonstration resta `unverified-demo` finché non arriva un export autorizzato.
+- I flag presenti nelle writeup restano confinati nel Solution Archive locale: non sono presenti nel catalogo, nella knowledge base o nel catalogo applicativo generato.
+- Le licenze dei singoli allegati non sono dichiarate separatamente: non ne viene assunto il riutilizzo.

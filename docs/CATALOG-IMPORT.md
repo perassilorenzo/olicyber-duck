@@ -68,8 +68,26 @@ L'importatore:
 | Export importato senza `--expected-total` | `imported-unverified` | `false` |
 | Export importato con `imported === expectedTotal` | `verified-import` | `true` |
 | Export importato con conteggio diverso | `imported-unverified` | `false` |
+| Dataset derivato da fonti pubbliche | `unverified-derived` | `false` |
 
 Anche con `verified-import`, dichiarare la completezza solo se il totale ufficiale è stato fornito da una fonte autorizzata.
+
+## Import del dataset di ricerca
+
+`scripts/import-dataset.mjs` converte solo la sezione `challengeCatalog` del dataset in un catalogo applicativo v2. Non importa la knowledge base completa e **non importa mai il Solution Archive**.
+
+```bash
+npm run dataset:build
+npm run dataset:import
+```
+
+Di default l'output è `dataset-input/derived/application-catalog.json`: `public/data/` resta invariato. Per sovrascrivere esplicitamente il catalogo applicativo:
+
+```bash
+npm run dataset:import -- --apply
+```
+
+Anche con `--apply` lo stato resta `unverified-derived`. Vedi [`DATASET.md`](DATASET.md) per schema, ID stabili, regole di aggancio e avvisi sulle licenze.
 
 ## Provenienza per record
 

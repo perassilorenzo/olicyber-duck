@@ -4,3 +4,5 @@ node_modules/
 dist/
 .DS_Store
 *.log
+dataset-input/sources/
+dataset-input/derived/test-*

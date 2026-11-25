@@ -21,7 +21,8 @@ Ramo attivo: `feature/oliduck-app`.
 - [x] `GET /api/status` e `POST /api/chat` con validazione, limiti, rate limiting per isolato e gestione errori senza esporre dettagli interni.
 - [x] Modello AI centralizzato e verificato: `@cf/meta/llama-3.3-70b-instruct-fp8-fast`.
 - [x] Importatore offline per export ufficiali autorizzati, con report di provenienza.
-- [x] 31 test automatici (`node:test`) su backend, catalogo, import, store, UI e interazioni.
+- [x] Dataset di ricerca da fonti pubbliche: inventario, ID stabili, KB RAG, solution archive ristretto e import sanificato.
+- [x] 39 test automatici (`node:test`) su backend, catalogo, import, dataset, store, UI e interazioni.
 
 ### Limiti noti
 
@@ -83,11 +84,22 @@ Per servire solo i file statici è sufficiente un qualsiasi server sulla cartell
 │       ├── validate.js         # validazione richieste
 │       ├── demo.js             # risposta simulata esplicita
 │       └── rate-limit.js       # anti-abuso in memoria
-├── scripts/import-catalog.mjs  # import autorizzato offline
-├── tests/                      # 5 file node:test
+├── scripts/
+│   ├── import-catalog.mjs      # import autorizzato offline
+│   ├── build-dataset.mjs       # dataset da fonti pubbliche locali
+│   └── import-dataset.mjs      # catalogo applicativo sanificato
+├── dataset-input/
+│   ├── REPORT.md               # report finale delle fonti analizzate
+│   ├── manifest.json           # inventario file-level e duplicati
+│   ├── import-report.json      # provenienza e limiti del dataset
+│   ├── catalog.json            # catalogo + KB + solution archive separati
+│   ├── rag-index.json          # chunk RAG della sola knowledge base
+│   └── derived/                # catalogo applicativo generato, non public/
+├── tests/                      # 6 file node:test
 ├── docs/
 │   ├── CLOUDFLARE.md
 │   ├── CATALOG-IMPORT.md
+│   ├── DATASET.md
 │   └── PUBLIC-SOURCES-RESEARCH.md
 ├── wrangler.toml
 └── package.json
@@ -187,6 +199,15 @@ node scripts/import-catalog.mjs \
 
 L'importatore non effettua richieste di rete, non legge token/cookie/sessioni, rimuove campi sensibili (`flag`, `solution`, `writeup`) e interrompe l'import se rileva pattern di flag. Dettagli: [`docs/CATALOG-IMPORT.md`](docs/CATALOG-IMPORT.md).
 
+Il dataset di ricerca derivato dalle fonti pubbliche locali è descritto in [`docs/DATASET.md`](docs/DATASET.md):
+
+```bash
+npm run dataset:build   # rigenera dataset-input/{REPORT,manifest,catalog,rag-index}
+npm run dataset:import  # catalogo sanificato in dataset-input/derived/, non public/
+```
+
+Le tre sezioni (`Challenge Catalog`, `Learning Knowledge Base`, `Solution Archive`) restano separate. Solo il catalogo sanificato può essere importato nell'app, sempre con stato `unverified-derived` finché non esiste un export autorizzato.
+
 ---
 
 ## Sicurezza
@@ -202,9 +223,11 @@ L'importatore non effettua richieste di rete, non legge token/cookie/sessioni, r
 ## Comandi
 
 ```bash
-npm test        # 31 test automatici
-npm run dev     # sviluppo con Pages Functions
-npm run deploy  # deploy Cloudflare Pages (richiede autenticazione)
+npm test              # test automatici
+npm run dataset:build # dataset da fonti pubbliche locali
+npm run dataset:import # catalogo applicativo sanificato
+npm run dev           # sviluppo con Pages Functions
+npm run deploy        # deploy Cloudflare Pages (richiede autenticazione)
 ```
 
 Configurazione Cloudflare, binding AI e troubleshooting: [`docs/CLOUDFLARE.md`](docs/CLOUDFLARE.md).

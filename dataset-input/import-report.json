@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-03-25T15:27:23+01:00",
+  "status": "derived-from-public-sources-unverified",
+  "purpose": "report di provenienza del dataset di ricerca, non del catalogo ufficiale Training",
+  "sources": [
+    {
+      "name": "official-writeups",
+      "url": "https://github.com/OliCyberIT/OliCyber.IT-Writeups",
+      "commit": "0d1ac26e3cc01c0ba85ab25d04cf1ece4548fa63",
+      "committedAt": "2026-03-25T15:27:23+01:00",
+      "license": "GPL-3.0"
+    },
+    {
+      "name": "community-solutions",
+      "url": "https://github.com/Privitorta/Training-OliCyber.IT-solutions",
+      "commit": "081b0fef425b91e6ee34352643cbb9e5a1aac50d",
+      "committedAt": "2025-11-15T23:57:10+01:00",
+      "license": "non verificata"
+    }
+  ],
+  "counts": {
+    "repositoriesAnalyzed": 2,
+    "filesExamined": 444,
+    "contentFiles": 386,
+    "repositoryMetadataFiles": 58,
+    "challengesIdentified": 465,
+    "officialRowsDiscovered": 155,
+    "officialUniqueSourceIds": 154,
+    "officialChallengeRecords": 155,
+    "communityOnlyChallenges": 310,
+    "matchedCommunityCandidates": 13,
+    "ambiguousCommunityMatches": 0,
+    "officialDescriptions": 0,
+    "derivedDescriptions": 228,
+    "officialWriteups": 154,
+    "communitySolutionFiles": 179,
+    "solutionArchiveDocuments": 348,
+    "attachments": 37,
+    "categories": 5,
+    "categoryNames": [
+      "binary",
+      "crypto",
+      "misc",
+      "network",
+      "web"
+    ],
+    "editions": 20,
+    "editionNames": [
+      "2021",
+      "2021 - nazionale",
+      "2022",
+      "2022 - territoriale",
+      "2023",
+      "2023 - Training Camp",
+      "2024 - nazionale",
+      "OliCyber.IT 2021 - Competizione nazionale",
+      "OliCyber.IT 2022 - Competizione nazionale",
+      "OliCyber.IT 2022 - Selezione territoriale",
+      "OliCyber.IT 2023 - Competizione nazionale",
+      "OliCyber.IT 2023 - Selezione territoriale",
+      "OliCyber.IT 2023 - Training Camp 1",
+      "OliCyber.IT 2023 - Training Camp 2",
+      "OliCyber.IT 2023 - Training Camp 3",
+      "OliCyber.IT 2024 - Competizione nazionale",
+      "OliCyber.IT 2024 - Competizione territoriale",
+      "OliCyber.IT 2025 - Competizione nazionale",
+      "OliCyber.IT 2025 - Competizione territoriale",
+      "OliCyber.IT 2026 - Competizione territoriale"
+    ],
+    "exactDuplicateFileGroups": 22,
+    "exactDuplicateFileCopies": 24,
+    "duplicateSourceChallengeIds": 2,
+    "unreadableFiles": 42,
+    "unreadableContentFiles": 34,
+    "archivesNotExtracted": 1,
+    "licenseVerifiedFiles": 210,
+    "licenseUnverifiedFiles": 234,
+    "knowledgeBaseDocuments": 1125,
+    "ragChunks": 1125,
+    "missingFields": {
+      "descrizione ufficiale (assente nelle fonti)": 465,
+      "autore della challenge": 310,
+      "edizione": 284,
+      "categoria": 219
+    }
+  },
+  "duplicates": {
+    "exactFileGroups": 22,
+    "exactFileCopies": 24,
+    "duplicateSourceChallengeIds": [
+      {
+        "id": "oc-2025-nazionale-726-r5",
+        "sourceChallengeId": "726",
+        "title": "Party Mode"
+      },
+      {
+        "id": "oc-2025-nazionale-726-r7",
+        "sourceChallengeId": "726",
+        "title": "Live and Let Die"
+      }
+    ],
+    "sharedWriteups": {
+      "official-writeups/2022-nazionale/binary2-3.md": [
+        "oc-2022-nazionale-292",
+        "oc-2022-nazionale-293"
+      ]
+    },
+    "ambiguousCommunityMatches": [],
+    "matchedCommunityCandidates": 13,
+    "unmatchedCommunityCandidates": 310
+  },
+  "verification": {
+    "catalogSourceRefsComplete": true,
+    "kbSourceRefsComplete": true,
+    "noFlagsInCatalogOrKb": true,
+    "solutionsNotInPublic": true
+  },
+  "limitations": [
+    "Le fonti pubbliche non contengono il catalogo ufficiale completo: la completezza resta non verificabile senza export autorizzato.",
+    "Tutte le 155 challenge ufficiali identificate hanno descrizione ufficiale assente; il testo presente nelle writeup è solo contesto derivato.",
+    "La repository community non dichiara licenza: nessun contenuto community deve essere pubblicato o caricato su Cloudflare senza autorizzazione.",
+    "Gli allegati binari e gli archivi non sono stati eseguiti né estratti; la loro sicurezza non è stata verificata.",
+    "Le soluzioni sono archive locali e non sono indicizzate per il tutor AI né accessibili da frontend o API pubbliche.",
+    "L'ID sorgente 726 compare due volte nel README ufficiale: i due record sono stati mantenuti distinti e segnalati."
+  ]
+}
