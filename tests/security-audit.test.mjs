@@ -20,7 +20,7 @@ function walk(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) out.push(...walk(full));
-    else if (entry.isFile() && entry.name.endsWith('.js')) out.push(full);
+    else if (entry.isFile() && (entry.name.endsWith('.js') || entry.name.endsWith('.cjs'))) out.push(full);
   }
   return out;
 }
@@ -120,18 +120,24 @@ test('il Solution Archive contiene soluzioni ma resta ristretto e fuori dal tuto
   assert.equal(applicationReport.counts.solutionArchiveDocumentsExcluded, solutions.length);
 });
 
-test('il runtime non carica RAG, dataset o solution archive', () => {
+test('il runtime carica solo l’indice RAG sanificato, non il dataset di ricerca', () => {
   const files = [
     ...walk(path.join(ROOT, 'functions')),
     ...walk(path.join(ROOT, 'public', 'src')),
     path.join(ROOT, 'public', 'index.html'),
     path.join(ROOT, 'wrangler.toml'),
   ];
-  const forbidden = ['rag-index', 'solutionArchive', 'learningKnowledgeBase', 'dataset-input', 'build-dataset', 'import-dataset'];
+  const forbidden = ['solutionArchive', 'learningKnowledgeBase', 'dataset-input', 'build-dataset', 'import-dataset'];
+  const ragShim = path.join(ROOT, 'functions', 'data', 'rag-data.cjs');
+  assert.ok(readText('functions/data/rag-data.cjs').includes('rag-index.json'));
+  assert.equal(existsSync(path.join(ROOT, 'public', 'data', 'rag-index.json')), false);
   for (const file of files) {
     const text = readFileSync(file, 'utf8');
     for (const needle of forbidden) {
       assert.ok(!text.includes(needle), `${path.relative(ROOT, file)} contiene ${needle}`);
+    }
+    if (file !== ragShim) {
+      assert.ok(!text.includes('rag-index'), `${path.relative(ROOT, file)} contiene rag-index`);
     }
   }
 

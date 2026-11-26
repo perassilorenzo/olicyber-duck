@@ -5,6 +5,8 @@ Stato: **audit completato e bonifica applicata**. Le correzioni alla pipeline e 
 Branch: `feature/oliduck-app` — commit esaminato nell'audit: `202bfe1` — audit versionato in `c43e3ab`.
 Le sezioni 1–9 conservano lo stato **pre-bonifica** come evidenza storica dell'audit; la sezione 10 descrive lo stato corrente.
 
+Nota successiva: l'integrazione dell'export browser ha introdotto `public/data/olicyber-challenges.json` e l'indice RAG runtime `functions/data/rag-index.json`. Le affermazioni del presente audit su `public/data/challenges.json` si riferiscono allo storico dataset di fonti pubbliche; lo stato attuale dell'app è descritto in [`../README.md`](../README.md) e [`../docs/CATALOG-IMPORT.md`](../docs/CATALOG-IMPORT.md).
+
 ---
 
 ## 1. Architettura esaminata (pre-bonifica)

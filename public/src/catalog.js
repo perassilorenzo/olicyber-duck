@@ -64,7 +64,7 @@ function normalizeChallenge(raw) {
   };
 }
 
-export async function loadCatalog(url = '/data/challenges.json') {
+export async function loadCatalog(url = '/data/olicyber-challenges.json') {
   const response = await fetch(url, { headers: { Accept: 'application/json' } });
   if (!response.ok) throw new Error(`Catalogo non disponibile (HTTP ${response.status}).`);
   const data = await response.json();
@@ -92,11 +92,14 @@ export async function loadCatalog(url = '/data/challenges.json') {
 export function deriveFacets(challenges) {
   const values = (key) => [...new Set(challenges.map((item) => item[key]).filter((value) => typeof value === 'string' && value))]
     .sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' }));
+  const tags = [...new Set(challenges.flatMap((item) => (Array.isArray(item.tags) ? item.tags : [])))]
+    .sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' }));
   return {
     categories: values('category'),
     difficulties: values('difficulty'),
     editions: values('edition'),
     paths: values('path'),
+    tags,
   };
 }
 
@@ -106,13 +109,15 @@ function searchable(challenge) {
     challenge.difficulty, challenge.edition, challenge.path, challenge.author,
     challenge.originalId,
     ...challenge.tags,
+    ...(challenge.metadata?.hints || []),
+    ...challenge.attachments.map((item) => `${item.name || ''} ${item.preview || ''}`),
   ].filter(Boolean).join(' ').toLocaleLowerCase('it');
 }
 
 export function filterChallenges(challenges, filters = {}, statusOf = () => 'todo') {
   const {
     query = '', category = 'all', difficulty = 'all', edition = 'all',
-    path = 'all', status = 'all',
+    path = 'all', status = 'all', tag = 'all',
   } = filters;
   const needle = String(query).trim().toLocaleLowerCase('it');
   return challenges.filter((challenge) => {
@@ -120,6 +125,7 @@ export function filterChallenges(challenges, filters = {}, statusOf = () => 'tod
     if (difficulty !== 'all' && challenge.difficulty !== difficulty) return false;
     if (edition !== 'all' && challenge.edition !== edition) return false;
     if (path !== 'all' && challenge.path !== path) return false;
+    if (tag !== 'all' && !(Array.isArray(challenge.tags) && challenge.tags.includes(tag))) return false;
     if (status !== 'all' && statusOf(challenge.id) !== status) return false;
     return !needle || searchable(challenge).includes(needle);
   });

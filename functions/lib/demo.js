@@ -2,7 +2,7 @@
 
 const HEADER = '**[MODALITÀ DEMO — risposta simulata, non generata da un modello AI]**\n\n';
 
-export function demoReply({ challenge, history = [], message }) {
+export function demoReply({ challenge, history = [], message, sources = [] }) {
   const attempts = history.filter((item) => item.role === 'user').length + 1;
   const general = challenge?.general === true;
   const topics = challenge?.hintTopics?.length ? challenge.hintTopics : (challenge?.tags || []);
@@ -29,6 +29,15 @@ export function demoReply({ challenge, history = [], message }) {
       + 'Un tutor AI analizzerebbe la tua ipotesi e ti aiuterebbe a validarla, senza dare la risposta finale.';
   }
 
+  // In modalità DEMO non c'è generazione AI: vengono mostrati solo i metadati
+  // delle fonti. Gli snippet restano lato server e non entrano nella risposta.
+  const visibleSources = sources.slice(0, 3);
+  const rag = visibleSources.length
+    ? `\n\n---\nContesto recuperato dall'indice locale (${sources.length} document${sources.length === 1 ? 'o' : 'i'}; soli metadati, nessuna generazione AI): ${
+      visibleSources.map((source) => `${source.title} (ID originale ${source.originalId ?? 'non indicato'})`).join('; ')
+    }.`
+    : '\n\n---\nNessun documento locale pertinente: informazioni insufficienti per un contesto aggiuntivo.';
+
   const notice = '\n\n---\nPer ricevere risposte reali, configura il binding Workers AI (vedi README).';
-  return HEADER + body + notice;
+  return HEADER + body + rag + notice;
 }

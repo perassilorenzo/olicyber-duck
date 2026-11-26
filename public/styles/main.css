@@ -394,6 +394,13 @@ html[data-theme="dark"] .detail-section__title { color: #8ec2ff; }
 html[data-theme="dark"] .resource-row a { color: #8ec2ff; }
 .resource-row a:hover { text-decoration: underline; }
 .resource-row__text { color: var(--muted); font-size: 12px; }
+.attachment-row { align-items: flex-start; }
+.attachment-row__label { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.attachment-kind { font-size: 10px; font-weight: 700; text-transform: uppercase; border: 1px solid var(--border-strong); border-radius: 999px; padding: 1px 7px; color: var(--muted); }
+.attachment-kind--error { color: #a33; border-color: #e2a7a7; }
+.attachment-note { margin: -4px 0 0; font-size: 11px; color: var(--muted); }
+.attachment-preview { margin: 0; max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 11px; line-height: 1.45; background: var(--surface-alt); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 9px 10px; }
+.hint-list { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13px; color: var(--ink); }
 
 /* ---------- Dialogs and toast ---------- */
 

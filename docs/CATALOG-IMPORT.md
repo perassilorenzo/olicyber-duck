@@ -1,15 +1,42 @@
-# Importazione autorizzata del catalogo
+# Importazione del catalogo
 
 ## Principi
 
 1. Il catalogo delle challenge OliCyber Training è accessibile solo con autenticazione. Le API anonime `/api/challenges`, `/api/challenges/<id>` e `/api/admin/challenges/export` rispondono `LOGIN_REQUIRED`.
 2. OliDuck **non tenta alcun bypass** di login, token, cookie o sessioni.
 3. L'unica via supported è un **export ottenuto legalmente dall'utente** con il proprio account o un'autorizzazione scritta dei mantenitori.
-4. Le challenge DEMO attuali non sono ufficiali e restano contrassegnate come tali finché non viene importato un export verificato.
+4. Le 7 challenge DEMO storiche non sono ufficiali e restano in `public/data/challenges.json` per test e fallback; l'UI usa il catalogo reale importato, che resta `verified: false` finché non esiste una verifica autorizzata.
 5. Writeup, flag e soluzioni **non entrano** nella libreria né nel contesto dell'assistente.
 6. Vengono accettati **solo URL HTTPS assoluti**: `javascript:`, `data:`, `file:`, `http:`, URL relativi e URL con credenziali incorporate vengono scartati e non resi cliccabili.
 
 La ricerca sulle fonti pubbliche e i limiti dell'analisi sono documentati in [`PUBLIC-SOURCES-RESEARCH.md`](PUBLIC-SOURCES-RESEARCH.md).
+
+## Export browser importato
+
+L'UI carica `public/data/olicyber-challenges.json`, generato da tre export browser creati dall'utente e conservati (grezzi) solo in `dataset-input/browser-import/`, esclusa da Git:
+
+| File grezzo | Contenuto |
+| --- | --- |
+| `oliduck-dataset.json` | 738 record scoperti, con testi, tag e allegati |
+| `oliduck-rag.json` | documenti e chunk per il retrieval locale |
+| `oliduck-failed.json` | errori segnalati durante l'export |
+
+Rigenerazione:
+
+```bash
+npm run dataset:browser-import
+```
+
+Risultato: **735 challenge importate**, **3 failure non bloccanti** (`olicyber-21`, `olicyber-45`, `olicyber-743`) e **1189 chunk RAG**. `olicyber-743` è stato escluso dal catalogo pubblico perché la descrizione risultava vuota dopo la sanificazione; il suo unico chunk RAG contiene solo titolo, tag e campo descrizione vuoto, senza informazioni utilizzabili. Per questo l'indice riporta `documents: 736` mentre il catalogo riporta `imported: 735`. Lo stato del catalogo è `imported-partial` e la provenienza resta `verified: false`: il numero totale ufficiale non è stato confermato da una fonte autorizzata.
+
+Asset derivati:
+
+- `public/data/olicyber-challenges.json` — catalogo pubblico usato dall'UI;
+- `public/data/olicyber-import-report.json` — conteggi, SHA-256 dei tre sorgenti, ID importati/esclusi e regole di sanificazione;
+- `functions/data/rag-index.json` — indice RAG lato server, **non** in `public/`; impostazioni: `chunkSize: 600`, `overlap: 80`, `maxCharsPerDoc: 5000`, `maxChunksPerDoc: 14`;
+- `dataset-input/derived/browser-import/import-failures.json` — dettagli dei failure.
+
+Lo script non usa rete né credenziali. Rimuove marcatori e flag (inclusi quelli codificati in Base64), link a writeup, URL interni autenticati e dati personali; non pubblica allegati Base64. Il retrieval è deterministico: `/api/chat` passa il contesto al modello solo se il binding AI è già configurato e restituisce ai client soltanto metadati delle fonti, mai gli snippet. `public/data/challenges.json` resta invariato.
 
 ## Formato accettato
 
@@ -67,6 +94,7 @@ L'importatore:
 | Condizione | `status` | `verifiedAgainstSource` |
 | --- | --- | --- |
 | Catalogo demo iniziale | `unverified-demo` | `false` |
+| Export browser sanificato con failure | `imported-partial` | `false` |
 | Export importato senza `--expected-total` | `imported-unverified` | `false` |
 | Export importato con `imported === expectedTotal` | `verified-import` | `true` |
 | Export importato con conteggio diverso | `imported-unverified` | `false` |
@@ -113,7 +141,7 @@ L'export autorizzato prevale sempre sull'indice pubblico dei writeup. In caso di
 
 ## Separazione dei dati
 
-L'aggiornamento di `public/data/challenges.json` non tocca la chiave `oliduck:state` nel browser. Stati personali, conversazioni e preferenze sopravvivono a re-import e ridistribuzioni. Prima di un import, è comunque buona pratica esportare o annotare il numero totale ufficiale e la data dell'export.
+L'aggiornamento di `public/data/olicyber-challenges.json` non tocca la chiave `oliduck:state` nel browser. Stati personali, conversazioni e preferenze sopravvivono a re-import e ridistribuzioni; lo stesso vale per il catalogo DEMO in `public/data/challenges.json`. Prima di un import, è comunque buona pratica esportare o annotare il numero totale ufficiale e la data dell'export.
 
 ## Verifica dopo l'import
 
@@ -121,7 +149,8 @@ L'aggiornamento di `public/data/challenges.json` non tocca la chiave `oliduck:st
 npm test
 npm run dev -- --port 8788
 curl -s http://localhost:8788/api/status
-node -e "const c=require('./public/data/challenges.json'); console.log(c.status, c.completeness.imported, c.completeness.verifiedAgainstSource)"
+node -e "const c=require('./public/data/olicyber-challenges.json'); console.log(c.status, c.completeness.imported, c.completeness.failed, c.source.verified)"
+curl -s http://localhost:8788/data/rag-index.json | head -c 80  # HTML dell'SPA, non JSON dell'indice RAG
 ```
 
 La UI mostra il badge `DEMO` per i cataloghi/record dimostrativi, `VERIFICATA` solo per provenienza verificata e `NON VERIFICATA` in tutti gli altri casi. I link esterni sono cliccabili solo quando l'URL è HTTPS valido; gli URL non HTTPS restano testo non cliccabile.

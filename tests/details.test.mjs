@@ -82,3 +82,40 @@ test('il drawer non rende cliccabili URL non HTTPS e mostra provenienza reale', 
   assert.equal(doc.getElementById('main-content').hasAttribute('inert'), false);
   dom.window.close();
 });
+
+test('il drawer mostra hint, tipi di allegato e anteprime senza link per URL non sicuri', async () => {
+  const dom = new JSDOM(html, { url: 'http://localhost:8788/', pretendToBeVisual: true });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.localStorage = dom.window.localStorage;
+  globalThis.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
+  dom.window.localStorage.clear();
+
+  const { LocalStore } = await import('../public/src/store.js');
+  const { createDetails } = await import('../public/src/details.js');
+  const current = {
+    ...baseChallenge(),
+    metadata: { hints: ['Osserva il formato del messaggio'] },
+    attachments: [
+      { name: 'dashed.txt', kind: 'text', preview: '- --..--', url: null },
+      { name: 'payload.bin', kind: 'binary' },
+      { name: 'broken.zip', kind: 'error', error: 'HTTP 500' },
+      { name: 'interno', kind: 'unknown', url: '/api/file/123' },
+    ],
+  };
+  createDetails({ store: new LocalStore(), getChallenge: () => current, onAsk() {} });
+  const body = dom.window.document.getElementById('details-body');
+
+  assert.match(body.textContent, /Hint disponibili/);
+  assert.match(body.textContent, /Osserva il formato del messaggio/);
+  assert.deepEqual(
+    [...body.querySelectorAll('.attachment-kind')].map((node) => node.textContent),
+    ['Testo', 'Binario', 'Errore', 'Sconosciuto'],
+  );
+  assert.equal(body.querySelectorAll('a[href]').length, 0);
+  assert.match(body.textContent, /URL non disponibile/);
+  assert.match(body.querySelector('.attachment-preview').textContent, /--\.\.--/);
+  assert.match(body.textContent, /Errore durante l'importazione: HTTP 500/);
+
+  dom.window.close();
+});

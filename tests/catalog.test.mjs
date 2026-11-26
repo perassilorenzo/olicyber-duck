@@ -32,9 +32,14 @@ test('catalogo v2 dichiara provenienza non verificata e nessun dato sensibile', 
 
 test('loadCatalog richiede schema v2 e normalizza i record', async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => ({ ok: true, json: async () => catalog });
+  let requestedUrl = null;
+  globalThis.fetch = async (url) => {
+    requestedUrl = String(url);
+    return { ok: true, json: async () => catalog };
+  };
   try {
     const loaded = await loadCatalog();
+    assert.match(requestedUrl, /\/data\/olicyber-challenges\.json$/);
     assert.equal(loaded.meta.status, 'unverified-demo');
     assert.equal(loaded.challenges.length, 7);
     assert.equal(loaded.challenges[0].attachments.length, 0);
@@ -116,6 +121,17 @@ test('ricerca, filtri derivati e stati personali funzionano insieme', () => {
   const selected = filterChallenges(all, { category: 'Crypto', status: 'todo' }, statusOf);
   assert.equal(selected.length, 1);
   assert.equal(filterChallenges(all, { category: 'Crypto', status: 'completed' }, statusOf).length, 0);
+});
+
+test('il filtro tag usa solo tag presenti nei dati e si combina con la ricerca', () => {
+  const items = [
+    { ...catalog.challenges[0], id: 'tag-a', tags: ['web', 'http'] },
+    { ...catalog.challenges[1], id: 'tag-b', tags: ['crypto'] },
+  ];
+  assert.deepEqual(deriveFacets(items).tags, ['crypto', 'http', 'web']);
+  assert.deepEqual(filterChallenges(items, { tag: 'web' }).map((item) => item.id), ['tag-a']);
+  assert.equal(filterChallenges(items, { tag: 'all' }).length, 2);
+  assert.equal(filterChallenges(items, { tag: 'web', query: 'inesistente' }).length, 0);
 });
 
 test('ordinamenti sono stabili e non mutano il catalogo', () => {

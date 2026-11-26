@@ -14,21 +14,23 @@ Ramo attivo: `feature/oliduck-app`.
 
 - [x] Workspace a due pannelli con splitter, min/max, reset, persistenza e responsive a due tab.
 - [x] Libreria v2 con ricerca, filtri derivati dai dati reali del catalogo, ordinamento, conteggio, stati personali, selezione e lista virtualizzata.
-- [x] Drawer dei dettagli con testo, provenienza, link originali e allegati eventuali.
+- [x] Drawer dei dettagli con testo, hint, allegati testuali/binari/con errori, provenienza e link originali solo se HTTPS.
 - [x] Assistant con **modalità generale** e conversazioni separate per challenge, contesto ricostruito **solo lato server**, streaming SSE cumulativo, errori con retry, annullamento sicuro e supporto IME.
 - [x] Persistenza localStorage v2 con migrazione v1→v2, fallback in memoria e cancellazione dei dati.
-- [x] Catalogo statico v2 con 7 challenge **DEMO** esplicitamente contrassegnate, nessun flag e nessun link inventato.
+- [x] Catalogo reale importato da export browser autorizzato (735 challenge su 738 scoperte; 3 record esclusi), con catalogo DEMO storico invariato per test e fallback.
+- [x] Filtro per tag derivato dai dati, ricerca anche in hint e anteprime degli allegati testuali.
+- [x] RAG deterministico locale lato server: chunk sanificati, contesto contestuale, fonti nei metadati e "informazioni insufficienti" senza riscontri.
 - [x] `GET /api/status` e `POST /api/chat` con validazione, limiti, rate limiting per isolato e gestione errori senza esporre dettagli interni.
-- [x] Modello AI centralizzato e verificato: `@cf/meta/llama-3.3-70b-instruct-fp8-fast`.
-- [x] Importatore offline per export ufficiali autorizzati, con report di provenienza.
+- [x] Modello AI centralizzato e verificato: `@cf/meta/llama-3.3-70b-instruct-fp8-fast`; resta disattivato senza binding.
+- [x] Importatore offline per export ufficiali autorizzati e per export browser, con report di provenienza e failure non bloccanti.
 - [x] Dataset di ricerca da fonti pubbliche: inventario, ID stabili, KB RAG, solution archive ristretto e import sanificato.
-- [x] 39 test automatici (`node:test`) su backend, catalogo, import, dataset, store, UI e interazioni.
+- [x] 75 test automatici (`node:test`) su backend, catalogo, import browser, dataset, store, UI e interazioni.
 
 ### Limiti noti
 
-- **Catalogo non ufficiale**: le challenge incluse sono esempi didattici; `status: "unverified-demo"`.
-- **Completezza non verificabile**: il numero totale ufficiale delle challenge non è pubblico e le API del portale richiedono login.
-- **Binding Workers AI da configurare**: senza di esso il backend risponde in modalità DEMO esplicita.
+- **Catalogo non verificato**: l'export browser è stato ottenuto legalmente, ma la provenienza resta `verified: false` e lo stato è `imported-partial`; tre record non sono importabili.
+- **Completezza non verificata**: 738 record scoperti, 735 importati; nessun totale ufficiale è stato fornito da una fonte autorizzata.
+- **RAG locale, non AI**: il retrieval è deterministico e non genera risposte; senza binding Workers AI il backend resta in modalità DEMO esplicita.
 - **Streaming lato server**: il client supporta SSE cumulativo; l'handler attuale restituisce JSON completo.
 - **Rate limiting in memoria**: per isolato; in produzione affiancare WAF / Rate Limiting Rules.
 - Nessun account, database o sincronizzazione cloud: i dati restano nel browser.
@@ -61,8 +63,9 @@ Per servire solo i file statici è sufficiente un qualsiasi server sulla cartell
 │   ├── favicon.svg
 │   ├── styles/main.css         # design system, splitter, responsive, temi
 │   ├── data/
-│   │   ├── challenges.json     # catalogo statico v2, separato dai dati personali
-│   │   └── import-report.json  # provenienza e limiti del catalogo
+│   │   ├── challenges.json     # catalogo DEMO storico, invariato per test e fallback
+│   │   ├── olicyber-challenges.json # catalogo reale usato dall'UI
+│   │   └── olicyber-import-report.json # provenienza e limiti dell'import
 │   └── src/
 │       ├── main.js             # orchestrazione
 │       ├── store.js            # localStorage v2, migrazioni e preferenze
@@ -77,26 +80,32 @@ Per servire solo i file statici è sufficiente un qualsiasi server sulla cartell
 ├── functions/
 │   ├── api/chat.js             # POST /api/chat
 │   ├── api/status.js           # GET /api/status
+│   ├── data/
+│   │   ├── rag-index.json      # indice RAG sanificato, solo lato server
+│   │   └── rag-data.cjs        # ponte CJS compatibile Wrangler 3/4
 │   └── lib/
 │       ├── model.js            # DEFAULT_MODEL (unico punto di verità)
 │       ├── catalog.js          # catalogo authoritative lato server
-│       ├── catalog-data.cjs    # ponte CJS per import JSON compatibile Wrangler 3/4
+│       ├── catalog-data.cjs    # ponte CJS per il catalogo reale
+│       ├── rag.js              # retrieval deterministico e metadati RAG
 │       ├── system-prompt.js    # prompt statico + confine casuale + redaction
 │       ├── validate.js         # validazione richieste
-│       ├── demo.js             # risposta simulata esplicita
+│       ├── demo.js             # risposta simulata esplicita con contesto RAG
 │       └── rate-limit.js       # anti-abuso in memoria
 ├── scripts/
+│   ├── import-browser-export.mjs # import del browser export sanitizzato
 │   ├── import-catalog.mjs      # import autorizzato offline
 │   ├── build-dataset.mjs       # dataset da fonti pubbliche locali
 │   └── import-dataset.mjs      # catalogo applicativo sanificato
 ├── dataset-input/
+│   ├── browser-import/         # tre export grezzi, ignorati da Git
 │   ├── REPORT.md               # report finale delle fonti analizzate
 │   ├── manifest.json           # inventario file-level e duplicati
 │   ├── import-report.json      # provenienza e limiti del dataset
 │   ├── catalog.json            # catalogo + KB + solution archive separati
 │   ├── rag-index.json          # chunk RAG della sola knowledge base
 │   └── derived/                # catalogo applicativo generato, non public/
-├── tests/                      # 6 file node:test
+├── tests/                      # 12 file node:test
 ├── docs/
 │   ├── CLOUDFLARE.md
 │   ├── CATALOG-IMPORT.md
@@ -119,11 +128,19 @@ Per servire solo i file statici è sufficiente un qualsiasi server sulla cartell
   "note": "Binding AI non configurato: il backend risponde in modalità DEMO.",
   "catalog": {
     "schemaVersion": 2,
-    "status": "unverified-demo",
+    "status": "imported-partial",
     "verified": false,
-    "imported": 7,
-    "source": "OliDuck DEMO (non ufficiale)",
-    "lastSync": null
+    "imported": 735,
+    "source": "OliCyber Training",
+    "lastSync": "2026-11-26T09:35:38.941Z"
+  },
+  "rag": {
+    "connected": true,
+    "documents": 736,
+    "chunks": 1189,
+    "generatedAt": "2026-11-26T09:35:38.941Z",
+    "source": "OliCyber Training (export browser autorizzato)",
+    "settings": { "chunkSize": 600, "overlap": 80, "maxCharsPerDoc": 5000, "maxChunksPerDoc": 14 }
   }
 }
 ```
@@ -134,7 +151,7 @@ Con AI configurata: `mode: "ai"` e `model` impostato.
 
 ```json
 {
-  "challengeId": "demo-web-01",
+  "challengeId": "olicyber-1",
   "message": "Come posso iniziare?",
   "history": [{ "role": "user", "content": "Ho letto il testo" }]
 }
@@ -142,15 +159,22 @@ Con AI configurata: `mode: "ai"` e `model` impostato.
 
 Per la conversazione generale usare `"challengeId": "general"`.
 
-Il campo `challenge` **non è accettato**: se inviato viene ignorato. Il server ricostruisce il contesto leggendo il catalogo in `functions/lib/catalog.js`.
+Il campo `challenge` **non è accettato**: se inviato viene ignorato. Il server ricostruisce il contesto leggendo il catalogo reale in `functions/lib/catalog.js` e recupera eventuali chunk RAG locali pertinenti.
 
 Risposta:
 
 ```json
-{ "reply": "...", "mode": "demo", "challengeId": "demo-web-01" }
+{
+  "reply": "...",
+  "mode": "demo",
+  "challengeId": "olicyber-1",
+  "sources": [
+    { "title": "Dashed", "originalId": "1", "challengeId": "olicyber-1", "index": 0, "score": 12 }
+  ]
+}
 ```
 
-oppure `mode: "ai"` con `model`. Errori: `400` (validazione/challenge sconosciuta), `403` (origine non consentita), `413` (body > 16.000 byte), `415` (Content-Type errato), `429` (rate limit, con `Retry-After`), `502` (modello non disponibile).
+oppure `mode: "ai"` con `model`. `sources` contiene solo metadati pubblici: nessuno snippet del RAG viene esposto nella risposta. Senza riscontri il messaggio indica che le informazioni disponibili sono insufficienti. Errori: `400` (validazione/challenge sconosciuta), `403` (origine non consentita), `413` (body > 16.000 byte), `415` (Content-Type errato), `429` (rate limit, con `Retry-After`), `502` (modello non disponibile).
 
 Limiti: messaggio 4.000 caratteri, cronologia 12 messaggi / 8.000 caratteri. Il contesto e la cronologia sono inseriti in messaggi `user` separati da un confine casuale generato per ogni richiesta: non possono modificare il system prompt.
 
@@ -163,33 +187,48 @@ Chiave: `oliduck:state`, `version: 2`.
 ```json
 {
   "version": 2,
-  "statuses": { "demo-web-01": "in-progress" },
+  "statuses": { "olicyber-1": "in-progress" },
   "conversations": {
     "general": [{ "id": "...", "role": "user", "content": "..." }],
-    "demo-web-01": []
+    "olicyber-1": []
   },
-  "selectedChallengeId": "demo-web-01",
+  "selectedChallengeId": "olicyber-1",
   "preferences": {
     "theme": "light",
     "panelWidth": 40,
     "activePanel": "assistant",
     "filters": {
       "query": "", "category": "all", "difficulty": "all", "edition": "all",
-      "path": "all", "status": "all", "sort": "title-asc"
+      "path": "all", "tag": "all", "status": "all", "sort": "title-asc"
     }
   }
 }
 ```
 
-Dati ufficiali, dati personali, conversazioni e preferenze restano separati. Aggiornare `challenges.json` non cancella progressi o chat. Se `localStorage` non è disponibile l'app resta usabile in memoria e lo segnala nelle impostazioni.
+Dati del catalogo, dati personali, conversazioni e preferenze restano separati. Aggiornare il catalogo non cancella progressi o chat. Se `localStorage` non è disponibile l'app resta usabile in memoria e lo segnala nelle impostazioni.
 
 ---
 
 ## Catalogo e importazione
 
-Il catalogo v2 è `public/data/challenges.json`. Ogni record conserva `provenance` (`source`, `sourceUrl`, `verified`), campi origine (`originalId`, `edition`, `path`, `score`, `author`, `state`, `available`) e allegati separati dal testo.
+L'UI usa `public/data/olicyber-challenges.json`: 735 challenge importate da export browser ottenuti legalmente (738 record scoperti, 3 esclusi). `public/data/challenges.json` resta il catalogo DEMO storico di 7 record, invariato per test e fallback. Ogni record conserva `provenance` (`source`, `sourceUrl`, `verified`), campi origine (`originalId`, `edition`, `path`, `score`, `author`, `state`, `available`) e allegati separati dal testo.
 
-Per importare un export ottenuto legalmente dall'utente:
+Per rigenerare in modo deterministico catalogo, report e indice RAG dai tre export browser grezzi:
+
+```bash
+npm run dataset:browser-import
+```
+
+Lo script legge solo `dataset-input/browser-import/oliduck-dataset.json`, `oliduck-rag.json` e `oliduck-failed.json` (file grezzi ignorati da Git) e produce:
+
+- `public/data/olicyber-challenges.json` — catalogo pubblico sanificato, usato dall'UI;
+- `public/data/olicyber-import-report.json` — conteggi, SHA-256 dei sorgenti e ID esclusi;
+- `functions/data/rag-index.json` — 1189 chunk RAG, serviti solo lato server;
+- `dataset-input/derived/browser-import/import-failures.json` — failure non bloccanti.
+
+Non vengono pubblicati token, cookie, flag, allegati Base64 né URL interni autenticati. I chunk RAG non sono esposti come file statico: `/api/chat` restituisce solo metadati delle fonti. Dettagli: [`docs/CATALOG-IMPORT.md`](docs/CATALOG-IMPORT.md).
+
+Per importare un diverso export ottenuto legalmente dall'utente:
 
 ```bash
 node scripts/import-catalog.mjs \
@@ -198,7 +237,7 @@ node scripts/import-catalog.mjs \
   --source-name "Export admin OliCyber 2026"
 ```
 
-L'importatore non effettua richieste di rete, non legge token/cookie/sessioni, rimuove campi sensibili (`flag`, `solution`, `writeup`) e interrompe l'import se rileva pattern di flag. Dettagli: [`docs/CATALOG-IMPORT.md`](docs/CATALOG-IMPORT.md).
+L'importatore non effettua richieste di rete, non legge token/cookie/sessioni, rimuove campi sensibili (`flag`, `solution`, `writeup`) e interrompe l'import se rileva pattern di flag.
 
 Il dataset di ricerca derivato dalle fonti pubbliche locali è descritto in [`docs/DATASET.md`](docs/DATASET.md):
 
@@ -214,6 +253,7 @@ Le tre sezioni (`Challenge Catalog`, `Learning Knowledge Base`, `Solution Archiv
 ## Sicurezza
 
 - Nessuna API key, token o segreto nel frontend: il provider AI è chiamato solo dal Pages Function.
+- L'indice RAG resta in `functions/data/`, non in `public/`: gli snippet non vengono restituiti alle API.
 - Nessuna conversazione salvata server-side.
 - Validazione di tutti i campi, limiti byte reali, controllo `Origin`, rate limiting per IP (hash SHA-256) e header `no-store` / `nosniff`.
 - System prompt statico lato server; dati non attendibili delimitati; redaction best-effort dell'output.
@@ -224,9 +264,10 @@ Le tre sezioni (`Challenge Catalog`, `Learning Knowledge Base`, `Solution Archiv
 ## Comandi
 
 ```bash
-npm test              # test automatici
-npm run dataset:build # dataset da fonti pubbliche locali
-npm run dataset:import # catalogo applicativo sanificato
+npm test                 # test automatici
+npm run dataset:browser-import # catalogo reale e indice RAG da export browser
+npm run dataset:build    # dataset da fonti pubbliche locali
+npm run dataset:import   # catalogo applicativo sanificato
 npm run dev           # sviluppo con Pages Functions
 npm run deploy        # deploy Cloudflare Pages (richiede autenticazione)
 ```

@@ -5,4 +5,5 @@ dist/
 .DS_Store
 *.log
 dataset-input/sources/
+dataset-input/browser-import/
 dataset-input/derived/test-*

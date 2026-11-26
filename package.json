@@ -9,6 +9,7 @@
     "deploy": "wrangler pages deploy public",
     "dataset:build": "node scripts/build-dataset.mjs",
     "dataset:import": "node scripts/import-dataset.mjs",
+    "dataset:browser-import": "node scripts/import-browser-export.mjs",
     "test": "node --test tests/*.test.mjs"
   },
   "devDependencies": {

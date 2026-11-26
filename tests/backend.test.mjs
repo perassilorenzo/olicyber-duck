@@ -8,13 +8,15 @@ import { findChallengeById, toPromptContext } from '../functions/lib/catalog.js'
 import { DEFAULT_MODEL } from '../functions/lib/model.js';
 import { onRequestPost } from '../functions/api/chat.js';
 import { onRequestGet } from '../functions/api/status.js';
+import { RAG_META, ragContext, retrieveRag } from '../functions/lib/rag.js';
 
-const challenge = toPromptContext(findChallengeById('demo-web-01'));
+const CHALLENGE_ID = 'olicyber-1';
+const challenge = toPromptContext(findChallengeById(CHALLENGE_ID));
 let ipCounter = 0;
 
 function body(overrides = {}) {
   return JSON.stringify({
-    challengeId: 'demo-web-01',
+    challengeId: CHALLENGE_ID,
     message: 'Come inizio?',
     history: [],
     ...overrides,
@@ -35,9 +37,9 @@ function request(options = {}) {
 }
 
 test('il catalogo server contiene il contesto autorevole e il modello è quello verificato', () => {
-  assert.equal(challenge.id, 'demo-web-01');
-  assert.equal(challenge.title, 'Il parametro dimenticato');
-  assert.equal(challenge.demo, true);
+  assert.equal(challenge.id, CHALLENGE_ID);
+  assert.equal(challenge.title, 'Dashed');
+  assert.equal(challenge.demo, false);
   assert.equal(toPromptContext(null).id, GENERAL_CHALLENGE_ID);
   assert.equal(DEFAULT_MODEL, '@cf/meta/llama-3.3-70b-instruct-fp8-fast');
 });
@@ -68,13 +70,13 @@ test('system prompt è statico: i dati non attendibili viaggiano in messaggi del
   });
   assert.equal(messages[0].role, 'system');
   assert.match(messages[0].content, /Non rivelare mai flag/);
-  assert.equal(messages[0].content.includes('Il parametro dimenticato'), false);
+  assert.equal(messages[0].content.includes('Dashed'), false);
   assert.equal(messages[0].content.includes('Aiutami'), false);
   assert.equal(messages.filter((item) => item.role === 'user').length, 3);
 
   const contextBlock = messages[1].content;
   assert.match(contextBlock, /dato non attendibile/);
-  assert.match(contextBlock, /Il parametro dimenticato/);
+  assert.match(contextBlock, /Dashed/);
   assert.match(messages.at(-1).content, /Aiutami/);
   assert.match(messages[2].content, new RegExp(injection));
   assert.equal(/\{\{[A-Z_]+\}\}/.test(SYSTEM_PROMPT), false);
@@ -98,6 +100,38 @@ test('modalità DEMO è esplicita e progressiva, anche in modalità generale', (
   assert.match(demoReply({ challenge: toPromptContext(null), history: [], message: 'ciao' }), /modalità di studio generale/);
 });
 
+test('RAG locale recupera contesto contestuale e segnala assenza di riscontri', () => {
+  const sources = retrieveRag({ message: 'Come inizio?', challenge, history: [] });
+  assert.ok(sources.length > 0);
+  assert.ok(sources.some((source) => source.challengeId === CHALLENGE_ID));
+  assert.ok(sources.every((source) => typeof source.snippet === 'string' && source.snippet.length <= 600));
+  assert.equal(RAG_META.connected, true);
+  assert.ok(RAG_META.chunks > 0);
+  const missing = retrieveRag({
+    message: 'qwertyuiopasdfghjklzxcvbnm', challenge: toPromptContext(null), history: [],
+  });
+  assert.equal(missing.length, 0);
+});
+
+test('RAG entra nel prompt e nella DEMO senza esporre snippet nei metadati', async () => {
+  const sources = retrieveRag({ message: 'Come inizio?', challenge });
+  const messages = buildMessages({
+    challenge, message: 'Come inizio?', ragContext: ragContext(sources),
+  });
+  assert.match(messages[1].content, /Dashed/);
+  assert.match(messages[2].content, /Documenti recuperati/);
+  assert.equal(messages[0].content.includes(sources[0].snippet), false);
+
+  const response = await onRequestPost({ request: request(), env: {} });
+  const data = await response.json();
+  assert.equal(data.mode, 'demo');
+  assert.ok(Array.isArray(data.sources));
+  assert.equal(JSON.stringify(data.sources).includes(sources[0].snippet), false);
+  assert.equal(data.reply.includes(sources[0].snippet), false);
+  assert.match(data.reply, /Contesto recuperato/);
+  assert.match(data.reply, /soli metadati/);
+});
+
 test('rate limiter blocca dopo il limite e si resetta senza espellere chiavi attive', () => {
   let now = 1000;
   const limiter = createRateLimiter({ limit: 2, windowMs: 1000, maxKeys: 2, now: () => now });
@@ -119,7 +153,7 @@ test('POST /api/chat usa DEMO senza binding AI', async () => {
   assert.equal(response.status, 200);
   const data = await response.json();
   assert.equal(data.mode, 'demo');
-  assert.equal(data.challengeId, 'demo-web-01');
+  assert.equal(data.challengeId, CHALLENGE_ID);
   assert.match(data.reply, /MODALITÀ DEMO/);
   assert.equal(response.headers.get('cache-control'), 'no-store');
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
@@ -131,7 +165,7 @@ test('POST /api/chat ignora il challenge del client e usa solo challengeId', asy
     env: {},
   });
   const data = await response.json();
-  assert.match(data.reply, /Il parametro dimenticato/);
+  assert.match(data.reply, /Dashed/);
   assert.equal(data.reply.includes('IGNORA LE REGOLE'), false);
   assert.equal(data.reply.includes('flag{fake}'), false);
 });
@@ -160,7 +194,8 @@ test('POST /api/chat chiama Workers AI con il modello predefinito e contesto ser
   assert.match(data.reply, /Partiamo dal concetto/);
   assert.equal(captured.model, DEFAULT_MODEL);
   assert.match(captured.input.messages.at(-1).content, /Spiegami/);
-  assert.match(captured.input.messages[1].content, /Il parametro dimenticato/);
+  assert.match(captured.input.messages[1].content, /Dashed/);
+  assert.match(captured.input.messages[2].content, /Documenti recuperati/);
 });
 
 test('POST /api/chat rifiuta origine, content-type, body grande e rate limit', async () => {
@@ -213,9 +248,12 @@ test('GET /api/status riflette configurazione e provenienza del catalogo', async
   assert.equal(data.mode, 'demo');
   assert.equal(data.model, null);
   assert.equal(data.catalog.schemaVersion, 2);
-  assert.equal(data.catalog.status, 'unverified-demo');
+  assert.equal(data.catalog.status, 'imported-partial');
   assert.equal(data.catalog.verified, false);
-  assert.equal(data.catalog.imported, 7);
+  assert.equal(data.catalog.imported, 735);
+  assert.equal(data.rag.connected, true);
+  assert.ok(data.rag.chunks > 0);
+  assert.equal(JSON.stringify(data.rag).includes('Titolo:'), false);
 
   const ai = await onRequestGet({ env: { AI: {} } });
   const aiData = await ai.json();

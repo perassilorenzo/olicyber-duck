@@ -4,6 +4,7 @@ import { demoReply } from '../lib/demo.js';
 import { createRateLimiter } from '../lib/rate-limit.js';
 import { findChallengeById, toPromptContext } from '../lib/catalog.js';
 import { DEFAULT_MODEL } from '../lib/model.js';
+import { ragContext, publicSources, retrieveRag } from '../lib/rag.js';
 
 // Nota: il limite in memoria è per isolato; in produzione va affiancato da
 // Cloudflare Rate Limiting Rules / WAF (vedi docs/CLOUDFLARE.md).
@@ -120,24 +121,29 @@ export async function onRequestPost({ request, env }) {
   const challenge = serverContextFor(challengeId);
   if (!challenge) return json({ error: 'Challenge non presente nel catalogo del tutor.' }, 400);
 
+  // Retrieval sempre lato server: il client non può scegliere i documenti.
+  const sources = retrieveRag({ message, challenge, history });
+  const sourceMeta = publicSources(sources);
+
   if (!env.AI) {
     return json({
-      reply: demoReply({ challenge, history, message }),
+      reply: demoReply({ challenge, history, message, sources }),
       mode: 'demo',
       challengeId,
+      sources: sourceMeta,
     });
   }
 
   const model = configuredModel(env);
   try {
     const result = await env.AI.run(model, {
-      messages: buildMessages({ challenge, history, message }),
+      messages: buildMessages({ challenge, history, message, ragContext: ragContext(sources) }),
       max_tokens: 700,
       temperature: 0.35,
     });
     const reply = extractText(result);
     if (!reply) return json({ error: 'Il modello non ha restituito una risposta utilizzabile.' }, 502);
-    return json({ reply, mode: 'ai', model, challengeId });
+    return json({ reply, mode: 'ai', model, challengeId, sources: sourceMeta });
   } catch (error) {
     // Non esporre messaggi interni del provider AI al client.
     console.error('[OliDuck] Errore Workers AI:', error?.message || error);

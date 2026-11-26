@@ -12,7 +12,7 @@ const OVERSCAN = 4;
 
 const DEFAULT_FILTERS = {
   query: '', category: 'all', difficulty: 'all', edition: 'all',
-  path: 'all', status: 'all', sort: 'title-asc',
+  path: 'all', tag: 'all', status: 'all', sort: 'title-asc',
 };
 
 function node(tag, className, text) {
@@ -32,6 +32,7 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
     difficulty: byId('difficulty-filter'),
     edition: byId('edition-filter'),
     path: byId('path-filter'),
+    tag: byId('tag-filter'),
     status: byId('status-filter'),
     sort: byId('sort-filter'),
   };
@@ -53,6 +54,7 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
   fillSelect(selects.difficulty, facets.difficulties, 'Tutte');
   fillSelect(selects.edition, facets.editions, 'Tutte');
   fillSelect(selects.path, facets.paths, 'Tutti');
+  fillSelect(selects.tag, facets.tags, 'Tutti');
   for (const option of SORT_OPTIONS) {
     const element = node('option', null, option.label);
     element.value = option.value;

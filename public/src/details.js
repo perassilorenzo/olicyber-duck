@@ -7,6 +7,9 @@ import { challengeProvenance } from './provenance.js';
 const STATUS_LABELS = { todo: 'Da fare', 'in-progress': 'In corso', completed: 'Completata' };
 const NEXT_STATUS = { todo: 'in-progress', 'in-progress': 'completed', completed: 'todo' };
 const NEXT_LABEL = { todo: 'Segna in corso', 'in-progress': 'Segna completata', completed: 'Ricomincia' };
+const ATTACHMENT_LABELS = {
+  text: 'Testo', binary: 'Binario', error: 'Errore', unknown: 'Sconosciuto',
+};
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -107,6 +110,17 @@ export function createDetails({ store, getChallenge, onAsk }) {
     statement.append(text);
     body.append(statement);
 
+    const hints = Array.isArray(challenge.metadata?.hints)
+      ? challenge.metadata.hints.filter((hint) => typeof hint === 'string' && hint.trim())
+      : [];
+    if (hints.length) {
+      const hintSection = section('Hint disponibili');
+      const list = element('ul', 'hint-list');
+      for (const hint of hints) list.append(element('li', null, hint));
+      hintSection.append(list);
+      body.append(hintSection);
+    }
+
     if (challenge.tags.length) {
       const tags = section('Tag');
       const row = element('div', 'badges');
@@ -118,6 +132,7 @@ export function createDetails({ store, getChallenge, onAsk }) {
     const facts = section('Informazioni');
     const rows = [
       ['Provenienza', provenance.label],
+      ['ID catalogo', challenge.id],
       ['ID originale', challenge.originalId],
       ['Punteggio', challenge.score],
       ['Autore', challenge.author],
@@ -142,11 +157,29 @@ export function createDetails({ store, getChallenge, onAsk }) {
       resources.append(row);
       hasResources = true;
     }
-    for (const item of challenge.attachments) {
-      if (!item.name || !item.url) continue;
-      const row = element('div', 'resource-row');
-      row.append(element('strong', null, 'Allegato'), link(item.url, item.name));
+    for (const item of challenge.attachments || []) {
+      if (!item || !item.name) continue;
+      const row = element('div', 'resource-row attachment-row');
+      const label = element('span', 'attachment-row__label');
+      label.append(
+        element('strong', null, 'Allegato'),
+        element(
+          'span',
+          `attachment-kind attachment-kind--${item.kind || 'unknown'}`,
+          ATTACHMENT_LABELS[item.kind] || ATTACHMENT_LABELS.unknown,
+        ),
+      );
+      const name = item.url
+        ? link(item.url, item.name)
+        : element('span', 'resource-row__text', `${item.name} (URL non disponibile)`);
+      row.append(label, name);
       resources.append(row);
+      if (item.error) {
+        resources.append(element('p', 'attachment-note', `Errore durante l'importazione: ${item.error}`));
+      }
+      if (item.kind === 'text' && item.preview) {
+        resources.append(element('pre', 'attachment-preview', item.preview));
+      }
       hasResources = true;
     }
     const provenanceUrl = challenge.provenance?.sourceUrl;

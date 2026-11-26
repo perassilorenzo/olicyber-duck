@@ -47,6 +47,7 @@ test('migra lo schema v1 senza perdere progressi e preferenze', () => {
   assert.equal(state.preferences.panelWidth, DEFAULT_PANEL_WIDTH);
   assert.equal(state.preferences.filters.query, 'vecchia');
   assert.equal(state.preferences.filters.edition, 'all');
+  assert.equal(state.preferences.filters.tag, 'all');
 });
 
 test('ripristina filtri e larghezza non validi', () => {
@@ -65,6 +66,16 @@ test('ripristina filtri e larghezza non validi', () => {
   assert.equal(state.preferences.filters.sort, 'title-asc');
   assert.equal(state.preferences.filters.query, '');
   assert.equal(state.preferences.filters.edition, '2026');
+  assert.equal(state.preferences.filters.tag, 'all');
+});
+
+test('normalizza il filtro tag mantenendo solo valori stringa', () => {
+  const state = normalizeState({
+    version: 2,
+    preferences: { filters: { tag: 'web' } },
+  });
+  assert.equal(state.preferences.filters.tag, 'web');
+  assert.equal(normalizeState({ version: 2, preferences: { filters: { tag: 12 } } }).preferences.filters.tag, 'all');
 });
 
 test('salva conversazioni separate per challenge e per modalità generale', () => {

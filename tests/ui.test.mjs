@@ -63,7 +63,9 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
 
   globalThis.fetch = async (url, options) => {
     const target = String(url);
-    if (target.endsWith('/data/challenges.json')) return jsonResponse(catalog);
+    if (target.endsWith('/data/olicyber-challenges.json') || target.endsWith('/data/challenges.json')) {
+      return jsonResponse(catalog);
+    }
     if (target.endsWith('/api/status')) return jsonResponse({ mode: 'demo', model: null });
     if (target.endsWith('/api/chat')) {
       const payload = JSON.parse(options.body);
@@ -123,6 +125,16 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
   await wait();
   assert.equal(doc.querySelectorAll('#challenge-list .challenge-item').length, 1);
   assert.equal(list.scrollTop, 0);
+
+  doc.getElementById('search-input').value = '';
+  doc.getElementById('search-input').dispatchEvent(new window.Event('input', { bubbles: true }));
+  await wait();
+  const tagFilter = doc.getElementById('tag-filter');
+  assert.ok(tagFilter);
+  tagFilter.value = 'HTTP';
+  tagFilter.dispatchEvent(new window.Event('change', { bubbles: true }));
+  await wait();
+  assert.equal(doc.querySelectorAll('#challenge-list .challenge-item').length, 2);
   doc.getElementById('clear-filters').click();
   await wait();
   assert.equal(doc.querySelectorAll('#challenge-list .challenge-item').length, 7);

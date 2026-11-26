@@ -29,7 +29,7 @@ export function defaultState() {
       activePanel: 'assistant',
       filters: {
         query: '', category: 'all', difficulty: 'all', edition: 'all',
-        path: 'all', status: 'all', sort: 'title-asc',
+        path: 'all', tag: 'all', status: 'all', sort: 'title-asc',
       },
     },
   };
@@ -53,7 +53,7 @@ function migrate(state) {
           query: typeof oldFilters.query === 'string' ? oldFilters.query : '',
           category: typeof oldFilters.category === 'string' ? oldFilters.category : 'all',
           difficulty: typeof oldFilters.difficulty === 'string' ? oldFilters.difficulty : 'all',
-          edition: 'all', path: 'all', status: 'all', sort: 'title-asc',
+          edition: 'all', path: 'all', tag: 'all', status: 'all', sort: 'title-asc',
         },
       },
     };
@@ -117,6 +117,7 @@ export function normalizeState(raw) {
         difficulty: typeof filters.difficulty === 'string' ? filters.difficulty : 'all',
         edition: typeof filters.edition === 'string' ? filters.edition : 'all',
         path: typeof filters.path === 'string' ? filters.path : 'all',
+        tag: typeof filters.tag === 'string' ? filters.tag : 'all',
         status: STATUSES.includes(filters.status) ? filters.status : 'all',
         sort: allowedSorts.includes(filters.sort) ? filters.sort : 'title-asc',
       },

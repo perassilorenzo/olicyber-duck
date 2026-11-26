@@ -31,6 +31,8 @@ npm run dataset:import -- --apply
 
 L'overwrite produce uno catalogo con `status: "unverified-derived"`: non equivale a un export ufficiale verificato.
 
+Questo dataset di fonti pubbliche è distinto dall'import browser che alimenta l'app: `npm run dataset:browser-import` genera il catalogo reale in `public/data/olicyber-challenges.json` e l'indice RAG runtime in `functions/data/rag-index.json`. Il `rag-index.json` descritto sotto, generato da `dataset:build`, contiene invece solo chunk della KB autorizzata (oggi vuota) e **non** viene usato dal tutor. Vedi [`CATALOG-IMPORT.md`](CATALOG-IMPORT.md).
+
 ## Struttura del dataset
 
 `dataset-input/catalog.json` contiene tre sezioni distinte:

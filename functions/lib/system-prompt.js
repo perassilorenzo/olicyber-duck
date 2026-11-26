@@ -64,11 +64,17 @@ function dataBlock(label, value, boundary) {
 }
 
 /** Costruisce i messaggi per l'API di Workers AI. */
-export function buildMessages({ challenge, history = [], message }) {
+export function buildMessages({ challenge, history = [], message, ragContext = null }) {
   const boundary = boundaryToken();
   const messages = [{ role: 'system', content: SYSTEM_PROMPT }];
 
   messages.push({ role: 'user', content: dataBlock('Contesto della challenge', challenge, boundary) });
+  if (ragContext) {
+    messages.push({
+      role: 'user',
+      content: dataBlock('Documenti recuperati dall indice locale RAG', ragContext, boundary),
+    });
+  }
   for (const item of history) {
     const label = item.role === 'assistant'
       ? 'Risposta precedente di OliDuck'
@@ -85,7 +91,9 @@ export function buildMessages({ challenge, history = [], message }) {
  */
 export function redactOutput(text) {
   return String(text || '')
-    .replace(/\b(?:flag|olicyber|ctf)\s*[{\[]\s*[^\]}]{1,200}\s*[\]}]/gi, '[FLAG RIMOSSA]')
+    .replace(/\b(?:flag|olicyber|ctf|ITASEC|OBUDMW|ptm|cnvlbd|cixd|xcqv|fzau|synt|cyvz)\s*[{\[][^\]}]{0,240}[\]}]/gis, '[FLAG RIMOSSA]')
+    .replace(/\b[A-Za-z][A-Za-z0-9_]*\s*\{\s*[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)+[!?]?\s*\}/gi, '[FLAG RIMOSSA]')
+    .replace(/\b[A-Za-z][A-Za-z0-9_]*\s*\{\s*[A-Za-z0-9]{8,}[!?]?\s*\}/gi, '[FLAG RIMOSSA]')
     .replace(/\bflag\s*[:=]\s*[^\s`"']{6,}/gi, '[FLAG RIMOSSA]')
     .trim();
 }

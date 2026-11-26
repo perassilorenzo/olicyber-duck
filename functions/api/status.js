@@ -1,5 +1,6 @@
 import { DEFAULT_MODEL } from '../lib/model.js';
 import { CATALOG_META } from '../lib/catalog.js';
+import { RAG_META } from '../lib/rag.js';
 
 function configuredModel(env) {
   const candidate = typeof env.AI_MODEL === 'string' ? env.AI_MODEL.trim() : '';
@@ -21,6 +22,14 @@ export async function onRequestGet({ env }) {
       imported: CATALOG_META.completeness.imported,
       source: CATALOG_META.source.name,
       lastSync: CATALOG_META.source.importedAt,
+    },
+    rag: {
+      connected: RAG_META.connected,
+      documents: RAG_META.documents,
+      chunks: RAG_META.chunks,
+      generatedAt: RAG_META.generatedAt,
+      source: RAG_META.source,
+      settings: RAG_META.settings,
     },
   }), {
     headers: {

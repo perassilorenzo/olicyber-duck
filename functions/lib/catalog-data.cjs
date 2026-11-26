@@ -6,4 +6,4 @@
  * statico viene risolto e inlined da Wrangler 3 e 4, ed è supportato da Node
  * nei test: una sola sorgente dati, senza duplicazioni né binding Node a runtime.
  */
-module.exports = require('../../public/data/challenges.json');
+module.exports = require('../../public/data/olicyber-challenges.json');
