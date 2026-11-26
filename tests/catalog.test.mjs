@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  loadCatalog, deriveFacets, filterChallenges, sortChallenges, SORT_OPTIONS,
+  DEFAULT_SORT, loadCatalog, deriveFacets, filterChallenges, sortChallenges, SORT_OPTIONS,
 } from '../public/src/catalog.js';
 
 const raw = readFileSync(new URL('../public/data/challenges.json', import.meta.url), 'utf8');
@@ -123,6 +123,27 @@ test('ricerca, filtri derivati e stati personali funzionano insieme', () => {
   assert.equal(filterChallenges(all, { category: 'Crypto', status: 'completed' }, statusOf).length, 0);
 });
 
+test('la ricerca copre ID, titolo, descrizione e tag senza alterare l’ordine', () => {
+  const all = catalog.challenges;
+  const ids = all.map((item) => item.id);
+  const cases = [
+    ['demo-web-01', 'demo-web-01'],
+    ['parametro dimenticato', 'demo-web-01'],
+    ['sostituzione rispetta', 'demo-crypto-01'],
+    ['analisi delle frequenze', 'demo-crypto-01'],
+  ];
+  for (const [query, expectedId] of cases) {
+    const results = filterChallenges(all, { query });
+    assert.equal(results.length, 1);
+    assert.equal(results[0].id, expectedId);
+    assert.deepEqual(
+      all.filter((item) => results.includes(item)).map((item) => item.id),
+      [expectedId],
+    );
+  }
+  assert.deepEqual(all.map((item) => item.id), ids);
+});
+
 test('il filtro tag usa solo tag presenti nei dati e si combina con la ricerca', () => {
   const items = [
     { ...catalog.challenges[0], id: 'tag-a', tags: ['web', 'http'] },
@@ -143,8 +164,10 @@ test('ordinamenti sono stabili e non mutano il catalogo', () => {
   assert.equal(sortChallenges(catalog.challenges, 'recent').length, 7);
   assert.equal(sortChallenges(catalog.challenges, 'original-id').length, 7);
   assert.equal(sortChallenges(catalog.challenges, 'category').length, 7);
+  assert.deepEqual(sortChallenges(catalog.challenges, DEFAULT_SORT).map((item) => item.id), before);
+  assert.deepEqual(sortChallenges(catalog.challenges).map((item) => item.id), before);
   assert.deepEqual(catalog.challenges.map((item) => item.id), before);
   assert.deepEqual(SORT_OPTIONS.map((option) => option.value), [
-    'title-asc', 'title-desc', 'category', 'score-desc', 'recent', 'original-id',
+    DEFAULT_SORT, 'original-id', 'title-asc', 'title-desc', 'category', 'score-desc', 'recent',
   ]);
 });

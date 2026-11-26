@@ -176,6 +176,7 @@ async function init() {
     onSelect: selectChallenge,
     onOpenDetails: openDetails,
   });
+  library.correctFilters();
 
   let lastNotifiedState = store.state;
   store.subscribe((state) => {

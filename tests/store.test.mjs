@@ -63,10 +63,11 @@ test('ripristina filtri e larghezza non validi', () => {
   assert.equal(normalizeState({ version: 2, preferences: { panelWidth: -5 } }).preferences.panelWidth, MIN_PANEL_WIDTH);
   assert.equal(state.preferences.activePanel, 'assistant');
   assert.equal(state.preferences.filters.status, 'all');
-  assert.equal(state.preferences.filters.sort, 'title-asc');
+  assert.equal(state.preferences.filters.sort, 'catalog');
   assert.equal(state.preferences.filters.query, '');
   assert.equal(state.preferences.filters.edition, '2026');
   assert.equal(state.preferences.filters.tag, 'all');
+  assert.equal(normalizeState({ version: 2, preferences: { filters: { sort: 'title-asc' } } }).preferences.filters.sort, 'title-asc');
 });
 
 test('normalizza il filtro tag mantenendo solo valori stringa', () => {

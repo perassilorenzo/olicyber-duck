@@ -6,13 +6,16 @@
 
 import { safeHttpsUrl } from './url.js';
 
+export const DEFAULT_SORT = 'catalog';
+
 export const SORT_OPTIONS = [
+  { value: DEFAULT_SORT, label: 'Ordine del catalogo' },
+  { value: 'original-id', label: 'ID originale' },
   { value: 'title-asc', label: 'Titolo (A-Z)' },
   { value: 'title-desc', label: 'Titolo (Z-A)' },
   { value: 'category', label: 'Categoria' },
   { value: 'score-desc', label: 'Punteggio' },
   { value: 'recent', label: 'Più recenti' },
-  { value: 'original-id', label: 'ID originale' },
 ];
 
 const asText = (value) => {
@@ -105,9 +108,9 @@ export function deriveFacets(challenges) {
 
 function searchable(challenge) {
   return [
-    challenge.title, challenge.description, challenge.statement, challenge.category,
-    challenge.difficulty, challenge.edition, challenge.path, challenge.author,
-    challenge.originalId,
+    challenge.id, challenge.title, challenge.description, challenge.statement,
+    challenge.category, challenge.difficulty, challenge.edition, challenge.path,
+    challenge.author, challenge.originalId,
     ...challenge.tags,
     ...(challenge.metadata?.hints || []),
     ...challenge.attachments.map((item) => `${item.name || ''} ${item.preview || ''}`),
@@ -138,9 +141,12 @@ function compareText(a, b) {
   return String(a).localeCompare(String(b), 'it', { sensitivity: 'base' });
 }
 
-export function sortChallenges(challenges, sort = 'title-asc') {
+export function sortChallenges(challenges, sort = DEFAULT_SORT) {
   const copy = [...challenges];
   switch (sort) {
+    case DEFAULT_SORT:
+      // L'ordine dell'array è quello dell'export: non viene alterato.
+      return copy;
     case 'title-desc':
       return copy.sort((a, b) => compareText(b.title, a.title));
     case 'category':

@@ -119,3 +119,124 @@ test('il drawer mostra hint, tipi di allegato e anteprime senza link per URL non
 
   dom.window.close();
 });
+
+test('il drawer omette le sezioni vuote e formatta codice e link senza innerHTML', async () => {
+  const dom = new JSDOM(html, { url: 'http://localhost:8788/', pretendToBeVisual: true });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.localStorage = dom.window.localStorage;
+  globalThis.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
+  dom.window.localStorage.clear();
+
+  const { LocalStore } = await import('../public/src/store.js');
+  const { createDetails } = await import('../public/src/details.js');
+  const current = {
+    ...baseChallenge(),
+    description: 'Usa `codice` e leggi [guida](https://example.invalid/guida).',
+    statement: '',
+    score: null,
+    author: null,
+    originalId: null,
+    tags: [],
+    metadata: {},
+    attachments: [],
+    sourceUrl: null,
+    provenance: { verified: false },
+  };
+  const details = createDetails({ store: new LocalStore(), getChallenge: () => current, onAsk() {} });
+  details.open();
+  const body = dom.window.document.getElementById('details-body');
+
+  assert.equal(body.querySelectorAll('code').length, 1);
+  assert.equal(body.querySelector('code').textContent, 'codice');
+  assert.equal(body.querySelectorAll('a[href]').length, 1);
+  assert.equal(body.querySelector('a[href]').getAttribute('href'), 'https://example.invalid/guida');
+  assert.equal(body.textContent.includes('Testo completo della challenge'), false);
+  assert.equal(body.textContent.includes('Hint disponibili'), false);
+  assert.equal(body.textContent.includes('Fonti e allegati'), false);
+  assert.equal(body.textContent.includes('Tag'), false);
+  assert.equal(body.textContent.includes('undefined'), false);
+  assert.equal(body.textContent.includes('null'), false);
+  for (const row of body.querySelectorAll('.resource-row')) {
+    assert.equal(row.textContent.trim().length > 0, true);
+  }
+  details.close();
+  dom.window.close();
+});
+
+test('il drawer non ripete la descrizione quando lo statement la contiene già', async () => {
+  const dom = new JSDOM(html, { url: 'http://localhost:8788/', pretendToBeVisual: true });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.localStorage = dom.window.localStorage;
+  globalThis.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
+  dom.window.localStorage.clear();
+
+  const { LocalStore } = await import('../public/src/store.js');
+  const { createDetails } = await import('../public/src/details.js');
+  let current = {
+    ...baseChallenge(),
+    description: 'Descrizione essenziale',
+    statement: 'Descrizione essenziale\n\nAllegati: file.txt',
+  };
+  const details = createDetails({ store: new LocalStore(), getChallenge: () => current, onAsk() {} });
+  details.open();
+  const body = dom.window.document.getElementById('details-body');
+  assert.equal(body.textContent.split('Descrizione essenziale').length - 1, 1);
+  assert.equal(body.textContent.includes('Testo completo della challenge'), false);
+
+  current = { ...current, statement: 'Descrizione essenziale\nSpiegazione aggiuntiva' };
+  details.render();
+  assert.equal(body.textContent.includes('Testo completo della challenge'), true);
+  assert.equal(body.textContent.includes('Spiegazione aggiuntiva'), true);
+
+  details.close();
+  dom.window.close();
+});
+
+test('il dettaglio di una challenge reale mostra metadati e allegati senza duplicazioni', async () => {
+  const dom = new JSDOM(html, { url: 'http://localhost:8788/', pretendToBeVisual: true });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.localStorage = dom.window.localStorage;
+  globalThis.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
+  dom.window.localStorage.clear();
+
+  const raw = readFileSync(new URL('../public/data/olicyber-challenges.json', import.meta.url), 'utf8');
+  const realCatalog = JSON.parse(raw);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => realCatalog });
+
+  try {
+    const { loadCatalog } = await import('../public/src/catalog.js');
+    const { LocalStore } = await import('../public/src/store.js');
+    const { createDetails } = await import('../public/src/details.js');
+    const { challenges } = await loadCatalog();
+    const details = createDetails({
+      store: new LocalStore(),
+      getChallenge: () => challenges[0],
+      onAsk() {},
+    });
+    details.open();
+    const doc = dom.window.document;
+    const body = doc.getElementById('details-body');
+    assert.equal(doc.getElementById('details-title').textContent, 'Dashed');
+    for (const text of [
+      '#1', 'olicyber-1', 'Misc', '489 pt', 'NON VERIFICATA', 'Risoluzioni',
+      'Argomenti hint', 'Allegati registrati', 'dashed.txt',
+    ]) {
+      assert.equal(body.textContent.includes(text), true, `manca "${text}" dal dettaglio`);
+    }
+    assert.equal(body.textContent.includes('Testo completo della challenge'), false);
+    assert.equal(body.textContent.includes('undefined'), false);
+    assert.equal(body.textContent.includes('null'), false);
+    assert.equal(body.querySelectorAll('a[href]').length, 0);
+
+    doc.getElementById('details-backdrop').click();
+    assert.equal(doc.getElementById('drawer-layer').hidden, true);
+    assert.equal(doc.getElementById('details-drawer').getAttribute('aria-hidden'), 'true');
+  } finally {
+    globalThis.fetch = originalFetch;
+    dom.window.close();
+  }
+});

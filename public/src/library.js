@@ -1,18 +1,25 @@
-/** Challenge Library v2: filtri derivati dai dati, ordinamento, selezione e lista virtualizzata. */
+/** Libreria v2: card compatte in ordine dataset, filtri derivati e navigazione da tastiera. */
 
 import { byId } from './utils.js';
 import { challengeProvenance } from './provenance.js';
 import {
-  SORT_OPTIONS, deriveFacets, filterChallenges, sortChallenges,
+  DEFAULT_SORT, SORT_OPTIONS, deriveFacets, filterChallenges, sortChallenges,
 } from './catalog.js';
 
 const STATUS_LABELS = { todo: 'Da fare', 'in-progress': 'In corso', completed: 'Completata' };
-const ROW_HEIGHT = 96;
+
+/** Altezza di una card più il margine: usata dalla lista virtualizzata. */
+export const ROW_HEIGHT = 132;
 const OVERSCAN = 4;
 
 const DEFAULT_FILTERS = {
   query: '', category: 'all', difficulty: 'all', edition: 'all',
-  path: 'all', tag: 'all', status: 'all', sort: 'title-asc',
+  path: 'all', tag: 'all', status: 'all', sort: DEFAULT_SORT,
+};
+
+const STATE_LABELS = {
+  online: 'Online',
+  'non disponibile': 'Non disponibile',
 };
 
 function node(tag, className, text) {
@@ -20,6 +27,32 @@ function node(tag, className, text) {
   if (className) element.className = className;
   if (text !== undefined && text !== null) element.textContent = String(text);
   return element;
+}
+
+function itemNumber(challenge) {
+  if (challenge.originalId !== null && challenge.originalId !== undefined) return String(challenge.originalId);
+  return String(challenge.id || '').replace(/^olicyber-/, '');
+}
+
+function reliableState(challenge) {
+  if (typeof challenge.state === 'string' && challenge.state.trim()) return challenge.state.trim();
+  if (challenge.available === false) return 'non disponibile';
+  return null;
+}
+
+function sourceAvailable(challenge) {
+  const state = reliableState(challenge);
+  return state ? state.toLocaleLowerCase('it') !== 'non disponibile' : challenge.available !== false;
+}
+
+function stateLabel(state) {
+  return STATE_LABELS[state.toLocaleLowerCase('it')] || state;
+}
+
+function detailRow(label, value, className = 'challenge-item__extras-item') {
+  const row = node('span', className);
+  row.append(node('span', 'challenge-item__extras-label', label), node('span', null, value));
+  return row;
 }
 
 export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
@@ -48,6 +81,8 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
       option.value = value;
       select.append(option);
     }
+    const wrapper = select.closest('.field');
+    if (wrapper) wrapper.hidden = values.length === 0;
   }
 
   fillSelect(selects.category, facets.categories, 'Tutte');
@@ -55,24 +90,38 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
   fillSelect(selects.edition, facets.editions, 'Tutte');
   fillSelect(selects.path, facets.paths, 'Tutti');
   fillSelect(selects.tag, facets.tags, 'Tutti');
+  selects.sort.replaceChildren();
   for (const option of SORT_OPTIONS) {
     const element = node('option', null, option.label);
     element.value = option.value;
     selects.sort.append(element);
   }
 
-  function syncFilterControls({ correct = false } = {}) {
+  function isAllowedFilter(key, value) {
+    return key === 'sort'
+      ? SORT_OPTIONS.some((option) => option.value === value)
+      : [...selects[key].options].some((option) => option.value === value);
+  }
+
+  function syncFilterControls() {
     const current = store.state.preferences.filters;
     search.value = current.query || '';
     for (const key of Object.keys(selects)) {
-      const allowed = key === 'sort'
-        ? SORT_OPTIONS.some((option) => option.value === current.sort)
-        : [...selects[key].options].some((option) => option.value === current[key]);
-      selects[key].value = allowed ? current[key] : DEFAULT_FILTERS[key];
-      // La correzione dei valori persistiti avviene solo all'avvio: evita update annidati.
-      if (!allowed && correct && current[key] !== DEFAULT_FILTERS[key]) {
-        store.setFilter(key, DEFAULT_FILTERS[key]);
-      }
+      selects[key].value = isAllowedFilter(key, current[key])
+        ? current[key]
+        : DEFAULT_FILTERS[key];
+    }
+  }
+
+  /** Allinea i filtri persistiti alle facet effettive, dopo che la libreria è pronta. */
+  function correctFilters() {
+    const current = store.state.preferences.filters;
+    const corrections = {};
+    for (const key of Object.keys(selects)) {
+      if (!isAllowedFilter(key, current[key])) corrections[key] = DEFAULT_FILTERS[key];
+    }
+    if (Object.keys(corrections).length) {
+      store.update((draft) => { Object.assign(draft.preferences.filters, corrections); });
     }
   }
 
@@ -86,7 +135,8 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
   function itemNode(challenge, index) {
     const status = store.getStatus(challenge.id);
     const selected = store.state.selectedChallengeId === challenge.id;
-    const wrapper = node('div', 'challenge-item');
+    const provenance = challengeProvenance(challenge);
+    const wrapper = node('article', 'challenge-item');
     wrapper.dataset.id = challenge.id;
     wrapper.dataset.index = String(index);
     wrapper.setAttribute('role', 'listitem');
@@ -97,44 +147,68 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
 
     const main = node('button', 'challenge-item__main');
     main.type = 'button';
-    main.setAttribute('aria-pressed', String(selected));
-    main.append(node('span', 'challenge-item__title', challenge.title));
+    main.setAttribute('aria-label', `Apri i dettagli di ${challenge.title}`);
+    main.addEventListener('click', () => onOpenDetails(challenge));
 
-    const provenance = challengeProvenance(challenge);
-    main.append(node(
+    const head = node('span', 'challenge-item__head');
+    head.append(node('span', 'challenge-item__number', `#${itemNumber(challenge)}`));
+    head.append(node('span', 'challenge-item__title', challenge.title));
+    head.append(node(
       'span',
       `provenance-badge provenance-badge--${provenance.kind}`,
       provenance.label,
     ));
+    main.append(head);
 
     const meta = node('span', 'challenge-item__meta');
-    if (challenge.category) meta.append(node('span', 'tag', challenge.category));
+    if (challenge.category) meta.append(node('span', 'tag tag--category', challenge.category));
     if (challenge.difficulty) {
       const tag = node('span', 'tag tag--difficulty', challenge.difficulty);
       tag.dataset.difficulty = challenge.difficulty;
       meta.append(tag);
     }
-    if (challenge.edition) meta.append(node('span', 'challenge-item__detail', challenge.edition));
-    if (challenge.path) meta.append(node('span', 'challenge-item__detail', challenge.path));
-    if (challenge.score !== null && challenge.score !== undefined) {
-      meta.append(node('span', 'challenge-item__detail', `${challenge.score} pt`));
+    for (const tag of (challenge.tags || []).slice(0, 2)) meta.append(node('span', 'tag', tag));
+    if ((challenge.tags || []).length > 2) {
+      meta.append(node('span', 'challenge-item__detail', `+${challenge.tags.length - 2}`));
     }
-    main.append(meta);
-
+    if (challenge.score !== null && challenge.score !== undefined) {
+      meta.append(node('span', 'challenge-item__score', `${challenge.score} pt`));
+    }
+    const sourceState = reliableState(challenge);
+    if (sourceState) {
+      const state = node('span', 'challenge-item__state', stateLabel(sourceState));
+      state.dataset.available = String(sourceAvailable(challenge));
+      meta.append(state);
+    }
     const statusNode = node('span', 'challenge-item__status');
     const dot = node('span', 'status-dot');
     dot.dataset.status = status;
     dot.setAttribute('aria-hidden', 'true');
     statusNode.append(dot, node('span', null, STATUS_LABELS[status]));
-    main.append(statusNode);
-    main.addEventListener('click', () => onSelect(challenge));
+    meta.append(statusNode);
+    main.append(meta);
 
-    const details = node('button', 'challenge-item__details', 'Dettagli');
-    details.type = 'button';
-    details.setAttribute('aria-label', `Apri i dettagli di ${challenge.title}`);
-    details.addEventListener('click', () => onOpenDetails(challenge));
+    const description = challenge.description || challenge.statement;
+    if (description) main.append(node('span', 'challenge-item__description', description));
 
-    wrapper.append(main, details);
+    const extras = node('span', 'challenge-item__extras');
+    if (Number.isFinite(challenge.metadata?.solves)) {
+      extras.append(detailRow('Risolte', new Intl.NumberFormat('it-IT').format(challenge.metadata.solves)));
+    }
+    if (challenge.author) extras.append(detailRow('Autore', challenge.author));
+    const attachments = Array.isArray(challenge.attachments) ? challenge.attachments.length : 0;
+    if (attachments) extras.append(detailRow('Allegati', attachments));
+    if (challenge.edition) extras.append(detailRow('Edizione', challenge.edition));
+    if (challenge.path) extras.append(detailRow('Percorso', challenge.path));
+    if (extras.childElementCount) main.append(extras);
+
+    const chat = node('button', 'challenge-item__chat', 'Chat');
+    chat.type = 'button';
+    chat.setAttribute('aria-pressed', String(selected));
+    chat.setAttribute('aria-label', `Apri la chat di ${challenge.title}`);
+    chat.addEventListener('click', () => onSelect(challenge));
+
+    wrapper.append(main, chat);
     return wrapper;
   }
 
@@ -144,8 +218,12 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
     if (!row) return null;
     return {
       id: row.dataset.id,
-      part: active.classList.contains('challenge-item__details') ? 'details' : 'main',
+      part: active.classList.contains('challenge-item__chat') ? 'chat' : 'main',
     };
+  }
+
+  function clearFilters() {
+    store.update((draft) => { draft.preferences.filters = { ...DEFAULT_FILTERS }; });
   }
 
   function paint() {
@@ -163,13 +241,22 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
 
     if (!visible.length) {
       items.style.height = 'auto';
-      items.append(node('p', 'empty-list', 'Nessuna challenge corrisponde ai filtri selezionati.'));
+      const empty = node('div', 'empty-list');
+      empty.append(
+        node('p', 'empty-list__title', 'Nessuna challenge corrisponde ai filtri selezionati.'),
+        node('p', 'empty-list__hint', 'Prova a cambiare ricerca, categoria o tag.'),
+      );
+      const reset = node('button', 'btn btn--outline btn--sm', 'Azzera filtri');
+      reset.type = 'button';
+      reset.addEventListener('click', clearFilters);
+      empty.append(reset);
+      items.append(empty);
       return;
     }
 
     if (active) {
       const row = [...items.children].find((element) => element.dataset.id === active.id);
-      const selector = active.part === 'details' ? '.challenge-item__details' : '.challenge-item__main';
+      const selector = active.part === 'chat' ? '.challenge-item__chat' : '.challenge-item__main';
       row?.querySelector(selector)?.focus({ preventScroll: true });
     }
   }
@@ -179,7 +266,8 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
     visible = sortChallenges(filterChallenges(
       challenges, currentFilters(), (id) => store.getStatus(id),
     ), selects.sort.value);
-    count.textContent = `${visible.length} challenge${visible.length === 1 ? '' : 's'}`;
+    const orderLabel = selects.sort.value === DEFAULT_SORT ? ' · ordine del catalogo' : '';
+    count.textContent = `${visible.length} challenge${visible.length === 1 ? '' : 's'}${orderLabel}`;
 
     items.style.height = `${visible.length * ROW_HEIGHT}px`;
     const maxScroll = Math.max(0, visible.length * ROW_HEIGHT - (list.clientHeight || 0));
@@ -222,15 +310,14 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
     focusItem(next);
   });
   list.addEventListener('scroll', paint, { passive: true });
-  byId('clear-filters').addEventListener('click', () => {
-    store.update((draft) => { draft.preferences.filters = { ...DEFAULT_FILTERS }; });
-  });
+  byId('clear-filters').addEventListener('click', clearFilters);
 
-  syncFilterControls({ correct: true });
+  syncFilterControls();
   render();
 
   return {
     render,
+    correctFilters,
     syncFilters() {
       syncFilterControls();
       render({ resetScroll: true });

@@ -29,7 +29,7 @@ export function defaultState() {
       activePanel: 'assistant',
       filters: {
         query: '', category: 'all', difficulty: 'all', edition: 'all',
-        path: 'all', tag: 'all', status: 'all', sort: 'title-asc',
+        path: 'all', tag: 'all', status: 'all', sort: 'catalog',
       },
     },
   };
@@ -53,7 +53,7 @@ function migrate(state) {
           query: typeof oldFilters.query === 'string' ? oldFilters.query : '',
           category: typeof oldFilters.category === 'string' ? oldFilters.category : 'all',
           difficulty: typeof oldFilters.difficulty === 'string' ? oldFilters.difficulty : 'all',
-          edition: 'all', path: 'all', tag: 'all', status: 'all', sort: 'title-asc',
+          edition: 'all', path: 'all', tag: 'all', status: 'all', sort: 'catalog',
         },
       },
     };
@@ -98,7 +98,7 @@ export function normalizeState(raw) {
   const prefs = state.preferences && typeof state.preferences === 'object' ? state.preferences : {};
   const filters = prefs.filters && typeof prefs.filters === 'object' ? prefs.filters : {};
   const width = Number(prefs.panelWidth);
-  const allowedSorts = ['title-asc', 'title-desc', 'category', 'score-desc', 'recent', 'original-id'];
+  const allowedSorts = ['catalog', 'original-id', 'title-asc', 'title-desc', 'category', 'score-desc', 'recent'];
 
   return {
     version: SCHEMA_VERSION,
@@ -119,7 +119,7 @@ export function normalizeState(raw) {
         path: typeof filters.path === 'string' ? filters.path : 'all',
         tag: typeof filters.tag === 'string' ? filters.tag : 'all',
         status: STATUSES.includes(filters.status) ? filters.status : 'all',
-        sort: allowedSorts.includes(filters.sort) ? filters.sort : 'title-asc',
+        sort: allowedSorts.includes(filters.sort) ? filters.sort : 'catalog',
       },
     },
   };

@@ -13,18 +13,18 @@ Il tutor segue un metodo di hint progressivi: aiuta a comprendere il problema e 
 Ramo attivo: `feature/oliduck-app`.
 
 - [x] Workspace a due pannelli con splitter, min/max, reset, persistenza e responsive a due tab.
-- [x] Libreria v2 con ricerca, filtri derivati dai dati reali del catalogo, ordinamento, conteggio, stati personali, selezione e lista virtualizzata.
-- [x] Drawer dei dettagli con testo, hint, allegati testuali/binari/con errori, provenienza e link originali solo se HTTPS.
+- [x] Libreria v2 con card compatte in ordine ufficiale del dataset, ricerca per ID/titolo/descrizione/tag, filtri derivati dai dati, ordinamento alternativo, conteggio, stati personali, selezione e lista virtualizzata.
+- [x] Drawer dei dettagli con testo non duplicato, hint, allegati testuali/binari/con errori, metadati reali e link originali solo se HTTPS.
 - [x] Assistant con **modalità generale** e conversazioni separate per challenge, contesto ricostruito **solo lato server**, streaming SSE cumulativo, errori con retry, annullamento sicuro e supporto IME.
 - [x] Persistenza localStorage v2 con migrazione v1→v2, fallback in memoria e cancellazione dei dati.
 - [x] Catalogo reale importato da export browser autorizzato (735 challenge su 738 scoperte; 3 record esclusi), con catalogo DEMO storico invariato per test e fallback.
-- [x] Filtro per tag derivato dai dati, ricerca anche in hint e anteprime degli allegati testuali.
+- [x] Filtro per tag derivato dai dati, ricerca anche in hint e anteprime degli allegati testuali; le facet senza valori vengono nascoste.
 - [x] RAG deterministico locale lato server: chunk sanificati, contesto contestuale, fonti nei metadati e "informazioni insufficienti" senza riscontri.
 - [x] `GET /api/status` e `POST /api/chat` con validazione, limiti, rate limiting per isolato e gestione errori senza esporre dettagli interni.
 - [x] Modello AI centralizzato e verificato: `@cf/meta/llama-3.3-70b-instruct-fp8-fast`; resta disattivato senza binding.
 - [x] Importatore offline per export ufficiali autorizzati e per export browser, con report di provenienza e failure non bloccanti.
 - [x] Dataset di ricerca da fonti pubbliche: inventario, ID stabili, KB RAG, solution archive ristretto e import sanificato.
-- [x] 75 test automatici (`node:test`) su backend, catalogo, import browser, dataset, store, UI e interazioni.
+- [x] 81 test automatici (`node:test`) su backend, catalogo, import browser, dataset, store, UI e interazioni.
 
 ### Limiti noti
 
@@ -199,7 +199,7 @@ Chiave: `oliduck:state`, `version: 2`.
     "activePanel": "assistant",
     "filters": {
       "query": "", "category": "all", "difficulty": "all", "edition": "all",
-      "path": "all", "tag": "all", "status": "all", "sort": "title-asc"
+      "path": "all", "tag": "all", "status": "all", "sort": "catalog"
     }
   }
 }
@@ -212,6 +212,8 @@ Dati del catalogo, dati personali, conversazioni e preferenze restano separati. 
 ## Catalogo e importazione
 
 L'UI usa `public/data/olicyber-challenges.json`: 735 challenge importate da export browser ottenuti legalmente (738 record scoperti, 3 esclusi). `public/data/challenges.json` resta il catalogo DEMO storico di 7 record, invariato per test e fallback. Ogni record conserva `provenance` (`source`, `sourceUrl`, `verified`), campi origine (`originalId`, `edition`, `path`, `score`, `author`, `state`, `available`) e allegati separati dal testo.
+
+L'ordinamento predefinito `catalog` conserva l'ordine dell'array ufficiale; `original-id` è l'alternativa deterministica. Il click sulla card apre il drawer, mentre il pulsante **Chat** seleziona la challenge per l'assistente. Difficoltà, edizione, percorso e data di pubblicazione non sono presenti nel catalogo reale: i controlli correlati vengono nascosti e nessun campo vuoto viene mostrato.
 
 Per rigenerare in modo deterministico catalogo, report e indice RAG dai tre export browser grezzi:
 

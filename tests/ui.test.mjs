@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { JSDOM } from 'jsdom';
+import { JSDOM, VirtualConsole } from 'jsdom';
 
 const catalog = JSON.parse(readFileSync(new URL('../public/data/challenges.json', import.meta.url), 'utf8'));
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
@@ -43,7 +43,13 @@ test('la shell contiene esattamente due pannelli, splitter e drawer in overlay',
 });
 
 test('workspace completo: libreria, dettagli, chat contestuale, generale, errori e annullamento', async () => {
-  const dom = new JSDOM(html, { url: 'http://localhost:8788/', pretendToBeVisual: true });
+  const consoleErrors = [];
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on('jsdomError', (error) => consoleErrors.push(error));
+  virtualConsole.on('error', (...args) => consoleErrors.push(new Error(args.join(' '))));
+  const dom = new JSDOM(html, {
+    url: 'http://localhost:8788/', pretendToBeVisual: true, virtualConsole,
+  });
   const { window } = dom;
   globalThis.window = window;
   globalThis.document = window.document;
@@ -141,7 +147,7 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
 
   // Selezione e conversazione contestuale: lo scroll non viene azzerato.
   list.scrollTop = 150;
-  doc.querySelector('#challenge-list .challenge-item[data-id="demo-web-01"] .challenge-item__main').click();
+  doc.querySelector('#challenge-list .challenge-item[data-id="demo-web-01"] .challenge-item__chat').click();
   await wait();
   assert.equal(list.scrollTop, 150);
   assert.equal(doc.getElementById('mode-challenge').getAttribute('aria-checked'), 'true');
@@ -160,7 +166,7 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
   assert.equal(payloads.at(-1).history.length, 0);
 
   // Dettagli in overlay: la chat resta nel secondo pannello e lo sfondo è inerte.
-  doc.querySelector('#challenge-list .challenge-item[data-id="demo-web-01"] .challenge-item__details').click();
+  doc.querySelector('#challenge-list .challenge-item[data-id="demo-web-01"] .challenge-item__main').click();
   await wait();
   assert.equal(doc.getElementById('drawer-layer').hidden, false);
   assert.equal(doc.getElementById('details-drawer').getAttribute('aria-hidden'), 'false');
@@ -276,6 +282,7 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
   assert.ok(generalSaved.conversations.general.length >= 1);
   assert.ok(generalSaved.conversations['demo-web-01'].length >= 2);
   assert.equal(generalSaved.conversations.general.some((item) => item.content === 'RISPOSTA_VECCHIA'), false);
+  assert.deepEqual(consoleErrors.map((error) => error.message), []);
 
   dom.window.close();
 });

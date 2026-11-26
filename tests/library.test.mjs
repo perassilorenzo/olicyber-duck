@@ -4,7 +4,6 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-const ROW_HEIGHT = 96;
 
 function setupDom() {
   const dom = new JSDOM(html, { url: 'http://localhost:8788/', pretendToBeVisual: true });
@@ -29,7 +28,7 @@ function activeIndex(doc) {
 test('lista virtualizzata conserva lo scroll e gestisce focus e navigazione da tastiera', async () => {
   const dom = setupDom();
   const { LocalStore } = await import('../public/src/store.js');
-  const { createLibrary } = await import('../public/src/library.js');
+  const { createLibrary, ROW_HEIGHT } = await import('../public/src/library.js');
 
   const challenges = Array.from({ length: 30 }, (_, index) => ({
     id: `test-${index}`,
@@ -92,4 +91,148 @@ test('lista virtualizzata conserva lo scroll e gestisce focus e navigazione da t
   assert.match(doc.getElementById('challenge-count').textContent, /^1 challenge/);
 
   dom.window.close();
+});
+
+test('card compatte mostrano solo dati reali e separano dettaglio dalla chat', async () => {
+  const dom = setupDom();
+  const { LocalStore } = await import('../public/src/store.js');
+  const { createLibrary, ROW_HEIGHT } = await import('../public/src/library.js');
+  const challenges = [
+    {
+      id: 'olicyber-9', originalId: '9', title: 'Challenge completa', category: 'Web',
+      difficulty: 'Facile', score: 120, state: 'online', available: true,
+      tags: ['HTTP', 'header'], description: 'Descrizione breve', statement: 'Testo completo',
+      metadata: { solves: 42 }, attachments: [{ name: 'a.txt' }], author: 'Ada',
+      edition: null, path: null, demo: false, provenance: { verified: false },
+    },
+    {
+      id: 'olicyber-10', originalId: '10', title: 'Solo titolo', category: null,
+      difficulty: null, score: null, state: null, available: true, tags: [],
+      description: '', statement: '', metadata: {}, attachments: [], demo: false,
+      provenance: { verified: false },
+    },
+  ];
+  const selected = [];
+  const opened = [];
+  const store = new LocalStore();
+  const library = createLibrary({
+    store,
+    challenges,
+    onSelect: (challenge) => selected.push(challenge.id),
+    onOpenDetails: (challenge) => opened.push(challenge.id),
+  });
+  store.subscribe(() => library.syncFilters());
+  const doc = dom.window.document;
+  const rows = [...doc.querySelectorAll('#challenge-items .challenge-item')];
+
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].style.top, '0px');
+  assert.equal(rows[1].style.top, `${ROW_HEIGHT}px`);
+  const full = rows[0].querySelector('.challenge-item__main');
+  for (const text of [
+    '#9', 'Challenge completa', 'NON VERIFICATA', 'Web', 'Facile', 'HTTP',
+    '120 pt', 'Online', 'Descrizione breve', 'Risolte', 'Ada', 'Allegati',
+  ]) {
+    assert.equal(full.textContent.includes(text), true, `manca "${text}" dalla card`);
+  }
+  assert.equal(full.querySelector('.challenge-item__description').textContent, 'Descrizione breve');
+
+  const minimal = rows[1].querySelector('.challenge-item__main');
+  assert.equal(minimal.querySelector('.challenge-item__description'), null);
+  assert.equal(minimal.querySelector('.challenge-item__extras'), null);
+  assert.equal(minimal.querySelector('.tag--difficulty'), null);
+  assert.equal(minimal.querySelector('.challenge-item__score'), null);
+  assert.equal(minimal.querySelector('.challenge-item__state'), null);
+
+  assert.equal(doc.getElementById('edition-filter').closest('.field').hidden, true);
+  assert.equal(doc.getElementById('path-filter').closest('.field').hidden, true);
+  assert.equal(doc.getElementById('difficulty-filter').closest('.field').hidden, false);
+  assert.equal(doc.getElementById('category-filter').closest('.field').hidden, false);
+
+  store.setFilter('edition', '2026');
+  library.correctFilters();
+  assert.equal(store.state.preferences.filters.edition, 'all');
+
+  rows[0].querySelector('.challenge-item__chat').click();
+  assert.deepEqual(selected, ['olicyber-9']);
+  assert.deepEqual(opened, []);
+  rows[0].querySelector('.challenge-item__main').click();
+  assert.deepEqual(opened, ['olicyber-9']);
+
+  const search = doc.getElementById('search-input');
+  search.value = 'inesistente';
+  search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(library.visible.length, 0);
+  assert.match(doc.getElementById('challenge-count').textContent, /^0 challenge/);
+  assert.ok(doc.querySelector('.empty-list'));
+  doc.querySelector('.empty-list button').click();
+  assert.equal(library.visible.length, 2);
+  assert.equal(doc.querySelector('.empty-list'), null);
+
+  dom.window.close();
+});
+
+test('carica tutte le 735 challenge reali mantenendo ordine, ricerca e filtri', async () => {
+  const dom = setupDom();
+  const raw = readFileSync(new URL('../public/data/olicyber-challenges.json', import.meta.url), 'utf8');
+  const realCatalog = JSON.parse(raw);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => realCatalog });
+
+  try {
+    const { loadCatalog, filterChallenges } = await import('../public/src/catalog.js');
+    const { LocalStore } = await import('../public/src/store.js');
+    const { createLibrary } = await import('../public/src/library.js');
+    const { challenges } = await loadCatalog();
+    assert.equal(challenges.length, 735);
+
+    const store = new LocalStore();
+    const library = createLibrary({ store, challenges, onSelect() {}, onOpenDetails() {} });
+    const doc = dom.window.document;
+    assert.equal(library.visible.length, 735);
+    assert.equal(doc.querySelectorAll('#challenge-items .challenge-item').length, 735);
+    assert.deepEqual(library.visible.map((item) => item.id), challenges.map((item) => item.id));
+    assert.equal(doc.getElementById('challenge-count').textContent, '735 challenges · ordine del catalogo');
+    assert.equal(doc.querySelectorAll('.provenance-badge--unverified').length, 735);
+    assert.equal(doc.getElementById('difficulty-filter').closest('.field').hidden, true);
+    assert.equal(doc.getElementById('edition-filter').closest('.field').hidden, true);
+    assert.equal(doc.getElementById('path-filter').closest('.field').hidden, true);
+    assert.equal(doc.getElementById('category-filter').closest('.field').hidden, false);
+    assert.equal(doc.getElementById('tag-filter').closest('.field').hidden, false);
+
+    const search = doc.getElementById('search-input');
+    search.value = 'olicyber-775';
+    search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    library.syncFilters();
+    assert.deepEqual(library.visible.map((item) => item.id), ['olicyber-775']);
+
+    search.value = 'non riesco a capire';
+    search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    library.syncFilters();
+    assert.equal(library.visible.some((item) => item.id === 'olicyber-1'), true);
+
+    search.value = '';
+    search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    library.syncFilters();
+    const category = doc.getElementById('category-filter');
+    category.value = 'Web';
+    category.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    library.syncFilters();
+    assert.equal(library.visible.length, filterChallenges(challenges, { category: 'Web' }).length);
+    assert.equal(library.visible.every((item) => item.category === 'Web'), true);
+
+    doc.getElementById('clear-filters').click();
+    library.syncFilters();
+    assert.equal(library.visible.length, 735);
+
+    const sort = doc.getElementById('sort-filter');
+    sort.value = 'original-id';
+    sort.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    library.syncFilters();
+    assert.equal(library.visible[0].originalId, '1');
+    assert.equal(library.visible.at(-1).originalId, '775');
+  } finally {
+    globalThis.fetch = originalFetch;
+    dom.window.close();
+  }
 });
