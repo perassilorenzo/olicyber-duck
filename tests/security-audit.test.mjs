@@ -120,7 +120,7 @@ test('il Solution Archive contiene soluzioni ma resta ristretto e fuori dal tuto
   assert.equal(applicationReport.counts.solutionArchiveDocumentsExcluded, solutions.length);
 });
 
-test('il runtime carica solo l’indice RAG sanificato, non il dataset di ricerca', () => {
+test('il tutor non carica l’indice RAG legacy né il dataset di ricerca', () => {
   const files = [
     ...walk(path.join(ROOT, 'functions')),
     ...walk(path.join(ROOT, 'public', 'src')),
@@ -130,6 +130,9 @@ test('il runtime carica solo l’indice RAG sanificato, non il dataset di ricerc
   const forbidden = ['solutionArchive', 'learningKnowledgeBase', 'dataset-input', 'build-dataset', 'import-dataset'];
   const ragShim = path.join(ROOT, 'functions', 'data', 'rag-data.cjs');
   assert.ok(readText('functions/data/rag-data.cjs').includes('rag-index.json'));
+  assert.match(readText('functions/lib/knowledge.js'), /teaching-kb-data\.cjs/);
+  assert.doesNotMatch(readText('functions/api/chat.js'), /rag-data|rag-index/);
+  assert.doesNotMatch(readText('functions/api/status.js'), /rag-data|rag-index/);
   assert.equal(existsSync(path.join(ROOT, 'public', 'data', 'rag-index.json')), false);
   for (const file of files) {
     const text = readFileSync(file, 'utf8');
@@ -142,8 +145,8 @@ test('il runtime carica solo l’indice RAG sanificato, non il dataset di ricerc
   }
 
   const wrangler = readText('wrangler.toml');
-  assert.match(wrangler, /^\s*#\s*\[ai\]\s*$/m);
-  assert.doesNotMatch(wrangler, /^\s*\[ai\]\s*$/m);
+  assert.match(wrangler, /^\s*\[ai\]\s*$/m);
+  assert.match(wrangler, /^\s*binding\s*=\s*"AI"\s*$/m);
 });
 
 test('catalogo demo e catalogo derivato restano separati', () => {

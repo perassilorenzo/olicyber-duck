@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   LocalStore, normalizeState, STORAGE_KEY, SCHEMA_VERSION,
   DEFAULT_PANEL_WIDTH, MIN_PANEL_WIDTH, MAX_PANEL_WIDTH,
-  GENERAL_CONVERSATION_ID,
+  GENERAL_CONVERSATION_ID, MAX_SELECTED_CHALLENGES, normalizeSelectedIds,
 } from '../public/src/store.js';
 
 function memoryStorage() {
@@ -27,7 +27,7 @@ test('normalizza stati e conversazioni non validi', () => {
   assert.deepEqual(state.statuses, { a: 'completed' });
   assert.equal(state.conversations.a.length, 1);
   assert.equal(state.conversations.a[0].role, 'user');
-  assert.equal(state.selectedChallengeId, null);
+  assert.deepEqual(state.selectedChallengeIds, []);
 });
 
 test('migra lo schema v1 senza perdere progressi e preferenze', () => {
@@ -41,7 +41,8 @@ test('migra lo schema v1 senza perdere progressi e preferenze', () => {
   assert.equal(state.version, 2);
   assert.equal(state.statuses.old, 'in-progress');
   assert.equal(state.conversations.old[0].content, 'domanda storica');
-  assert.equal(state.selectedChallengeId, 'old');
+  assert.deepEqual(state.selectedChallengeIds, ['old']);
+  assert.equal('selectedChallengeId' in state, false);
   assert.equal(state.preferences.theme, 'dark');
   assert.equal(state.preferences.activePanel, 'library');
   assert.equal(state.preferences.panelWidth, DEFAULT_PANEL_WIDTH);
@@ -100,7 +101,7 @@ test('salva conversazioni separate per challenge e per modalità generale', () =
   assert.equal(reloaded.state.preferences.theme, 'dark');
   assert.equal(reloaded.state.preferences.panelWidth, 55);
   assert.equal(reloaded.state.preferences.filters.category, 'Web');
-  assert.equal(reloaded.state.selectedChallengeId, 'demo-web-01');
+  assert.deepEqual(reloaded.state.selectedChallengeIds, ['demo-web-01']);
 
   reloaded.clearConversation('demo-web-01');
   assert.equal(reloaded.getConversation('demo-web-01').length, 0);
@@ -145,4 +146,53 @@ test('funziona anche senza localStorage', () => {
   store.setStatus('x', 'completed');
   assert.equal(store.getStatus('x'), 'completed');
   assert.match(store.lastError, /localStorage non disponibile/);
+});
+
+test('migra selectedChallengeId v2 e valida gli ID selezionati', () => {
+  const migrated = normalizeState({ version: 2, selectedChallengeId: 'vecchia-id' });
+  assert.deepEqual(migrated.selectedChallengeIds, ['vecchia-id']);
+  assert.equal('selectedChallengeId' in migrated, false);
+
+  const many = Array.from({ length: 9 }, (_, index) => `challenge-${index}`);
+  assert.deepEqual(
+    normalizeSelectedIds([...many, 'bad id', 'ok_id', 'ok_id', 42, 'a'.repeat(65)]),
+    many.slice(0, MAX_SELECTED_CHALLENGES),
+  );
+  assert.deepEqual(normalizeSelectedIds('singolo'), ['singolo']);
+  const state = normalizeState({ version: 2, selectedChallengeIds: ['b', 'b', 'a', 'bad id', ...many] });
+  assert.deepEqual(state.selectedChallengeIds, ['b', 'a', ...many.slice(0, 4)]);
+});
+
+test('gestisce più challenge selezionate, rimozione singola, limite e compatibilità', () => {
+  const storage = memoryStorage();
+  const store = new LocalStore(storage);
+
+  assert.equal(store.toggleChallengeSelection('a'), true);
+  assert.equal(store.toggleChallengeSelection('b'), true);
+  assert.equal(store.toggleChallengeSelection('c'), true);
+  assert.deepEqual(store.getSelectedChallengeIds(), ['a', 'b', 'c']);
+
+  assert.equal(store.toggleChallengeSelection('b'), false);
+  assert.deepEqual(store.getSelectedChallengeIds(), ['a', 'c']);
+  assert.equal(store.toggleChallengeSelection('non valido!'), false);
+  assert.deepEqual(store.getSelectedChallengeIds(), ['a', 'c']);
+
+  store.clearSelectedChallenges();
+  assert.deepEqual(store.getSelectedChallengeIds(), []);
+
+  store.setSelectedChallengeIds(['x', 'x', 'y']);
+  assert.deepEqual(store.getSelectedChallengeIds(), ['x', 'y']);
+
+  store.setSelectedChallengeIds(Array.from({ length: 8 }, (_, index) => `id-${index}`));
+  assert.deepEqual(store.getSelectedChallengeIds(), Array.from({ length: 6 }, (_, index) => `id-${index}`));
+  assert.equal(store.toggleChallengeSelection('id-7'), false);
+  assert.equal(store.getSelectedChallengeIds().length, MAX_SELECTED_CHALLENGES);
+
+  store.selectChallenge('singola');
+  assert.deepEqual(store.getSelectedChallengeIds(), ['singola']);
+  store.selectChallenge(null);
+  assert.deepEqual(store.getSelectedChallengeIds(), []);
+
+  const reloaded = new LocalStore(storage);
+  assert.deepEqual(reloaded.getSelectedChallengeIds(), []);
 });

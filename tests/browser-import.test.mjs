@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   deriveFacets, filterChallenges, loadCatalog,
 } from '../public/src/catalog.js';
-import { RAG_META, retrieveRag } from '../functions/lib/rag.js';
+import { KNOWLEDGE_META, retrieveKnowledge } from '../functions/lib/knowledge.js';
 
 const catalogRaw = readFileSync(new URL('../public/data/olicyber-challenges.json', import.meta.url), 'utf8');
 const ragRaw = readFileSync(new URL('../functions/data/rag-index.json', import.meta.url), 'utf8');
@@ -79,24 +79,21 @@ test('report e failure non bloccano il catalogo e restano fuori dalla UI', () =>
   for (const id of report.failedIds) assert.equal(ids.has(id), false);
 });
 
-test('l’indice RAG è sanificato, lato server e collegato al retrieval', () => {
+test('l’indice dell’export browser resta locale e non è più usato dal tutor', () => {
   assert.ok(ragIndex.documents > 0);
   assert.ok(ragIndex.chunks > 0);
   assert.equal(ragIndex.items.length, ragIndex.chunks);
-  assert.equal(RAG_META.chunks, ragIndex.chunks);
   assert.equal(ragRaw.includes('flag{'), false);
   assert.equal(ragRaw.includes('/api/file/'), false);
   assert.equal(hasEncodedFlag(ragRaw), false);
   assert.equal(hasBraceFlag(ragRaw), false);
 
-  const challenge = {
-    id: 'olicyber-1', title: 'Dashed', tags: ['misc'], hintTopics: [],
-  };
-  const sources = retrieveRag({ message: 'Dashed decifrare messaggio', challenge, history: [] });
-  assert.ok(sources.length > 0);
-  assert.equal(sources[0].challengeId, 'olicyber-1');
-  assert.match(sources[0].snippet, /Dashed/);
-  assert.equal(sources.some((source) => source.snippet.includes('flag{')), false);
+  // Il retrieval del tutor usa solo la knowledge base didattica separata.
+  assert.equal(KNOWLEDGE_META.chunks, 20);
+  assert.equal(KNOWLEDGE_META.policy.derivedFromChallengeExport, false);
+  const sources = retrieveKnowledge({ message: 'Dashed decifrare messaggio' });
+  assert.ok(sources.every((source) => !('challengeId' in source)));
+  assert.ok(sources.every((source) => !source.snippet.includes('Dashed')));
 });
 
 test('il catalogo reale caricato nell’UI espone il tag come filtro derivato', async () => {

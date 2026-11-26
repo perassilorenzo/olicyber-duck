@@ -2,9 +2,9 @@
  * Persistenza locale di OliDuck (schema v2).
  *
  * I dati ufficiali delle challenge NON sono qui: il catalogo è un file statico.
- * Qui restano solo stati personali, conversazioni, ultima challenge selezionata
- * e preferenze dell'interfaccia. Un aggiornamento del catalogo non cancella
- * nessuna di queste chiavi.
+ * Qui restano solo stati personali, conversazioni, challenge incluse nel
+ * contesto della chat e preferenze dell'interfaccia. Un aggiornamento del
+ * catalogo non cancella nessuna di queste chiavi.
  */
 
 export const STORAGE_KEY = 'oliduck:state';
@@ -14,15 +14,31 @@ export const GENERAL_CONVERSATION_ID = 'general';
 export const DEFAULT_PANEL_WIDTH = 40;
 export const MIN_PANEL_WIDTH = 22;
 export const MAX_PANEL_WIDTH = 72;
+export const MAX_SELECTED_CHALLENGES = 6;
+export const SELECTED_CHALLENGE_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 
 const MAX_MESSAGES_PER_CHALLENGE = 100;
+
+/** ID validi, deduplicati e in ordine di inclusione (max 6). */
+export function normalizeSelectedIds(value) {
+  const candidates = Array.isArray(value)
+    ? value
+    : (typeof value === 'string' ? [value] : []);
+  const ids = [];
+  for (const id of candidates) {
+    if (typeof id !== 'string' || !SELECTED_CHALLENGE_ID_PATTERN.test(id) || ids.includes(id)) continue;
+    ids.push(id);
+    if (ids.length === MAX_SELECTED_CHALLENGES) break;
+  }
+  return ids;
+}
 
 export function defaultState() {
   return {
     version: SCHEMA_VERSION,
     statuses: {},
     conversations: {},
-    selectedChallengeId: null,
+    selectedChallengeIds: [],
     preferences: {
       theme: 'light',
       panelWidth: DEFAULT_PANEL_WIDTH,
@@ -35,7 +51,7 @@ export function defaultState() {
   };
 }
 
-/** Migrazione v1 → v2: conserva stati, conversazioni e ultima challenge. */
+/** Migrazione v1 → v2: conserva stati, conversazioni e challenge selezionata. */
 function migrate(state) {
   if (state.version === SCHEMA_VERSION) return state;
   if (state.version === 1 || state.version === undefined || state.version === null) {
@@ -104,7 +120,8 @@ export function normalizeState(raw) {
     version: SCHEMA_VERSION,
     statuses,
     conversations,
-    selectedChallengeId: typeof state.selectedChallengeId === 'string' ? state.selectedChallengeId : null,
+    // Uno stato v2 storico può avere solo `selectedChallengeId`: diventa un array di uno.
+    selectedChallengeIds: normalizeSelectedIds(state.selectedChallengeIds ?? state.selectedChallengeId),
     preferences: {
       theme: prefs.theme === 'dark' ? 'dark' : 'light',
       panelWidth: Number.isFinite(width)
@@ -225,7 +242,37 @@ export class LocalStore {
     this.update((draft) => { draft.preferences.filters[key] = value; });
   }
 
+  getSelectedChallengeIds() {
+    return [...(this.state.selectedChallengeIds || [])];
+  }
+
+  setSelectedChallengeIds(ids) {
+    const next = normalizeSelectedIds(ids);
+    if (next.join('|') === this.getSelectedChallengeIds().join('|')) return next;
+    this.update((draft) => { draft.selectedChallengeIds = next; });
+    return next;
+  }
+
+  /** Compatibilità con il vecchio singolo ID: imposta [id] oppure []. */
   selectChallenge(id) {
-    this.update((draft) => { draft.selectedChallengeId = typeof id === 'string' ? id : null; });
+    this.setSelectedChallengeIds(typeof id === 'string' ? [id] : []);
+  }
+
+  /** Aggiunge/rimuove un ID e ritorna il nuovo stato di selezione. */
+  toggleChallengeSelection(id) {
+    if (typeof id !== 'string' || !SELECTED_CHALLENGE_ID_PATTERN.test(id)) return false;
+    const ids = this.getSelectedChallengeIds();
+    const index = ids.indexOf(id);
+    if (index !== -1) {
+      this.setSelectedChallengeIds(ids.filter((item) => item !== id));
+      return false;
+    }
+    if (ids.length >= MAX_SELECTED_CHALLENGES) return false;
+    this.setSelectedChallengeIds([...ids, id]);
+    return true;
+  }
+
+  clearSelectedChallenges() {
+    this.setSelectedChallengeIds([]);
   }
 }

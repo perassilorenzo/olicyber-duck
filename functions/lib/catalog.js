@@ -1,5 +1,13 @@
-/** Catalogo authoritative lato server: il client non può scegliere il contesto. */
+/**
+ * Catalogo authoritative lato server: il client può inviare solo ID.
+ *
+ * Il contesto del tutor è deliberatamente MINIMO: ID, ID originale, titolo,
+ * categoria, tag, difficoltà e punteggio. Descrizioni, statement, hint,
+ * obiettivi, allegati, URL e stati NON sono mai passati al modello.
+ */
+
 import catalog from './catalog-data.cjs';
+import { GENERAL_CHALLENGE_ID } from './validate.js';
 
 export const CATALOG_META = {
   schemaVersion: catalog.schemaVersion,
@@ -15,20 +23,13 @@ export function findChallengeById(id) {
 export function toPromptContext(challenge) {
   if (!challenge) {
     return {
-      id: 'general',
+      id: GENERAL_CHALLENGE_ID,
+      originalId: null,
       title: 'Modalità generale di studio',
       category: 'Cybersecurity',
       difficulty: null,
-      description: 'Nessuna challenge selezionata: lo studente chiede informazioni generali.',
-      statement: '',
-      tags: [],
-      learningGoals: [],
-      hintTopics: [],
       score: null,
-      edition: null,
-      state: null,
-      sourceUrl: null,
-      demo: false,
+      tags: [],
       general: true,
     };
   }
@@ -38,16 +39,20 @@ export function toPromptContext(challenge) {
     title: challenge.title,
     category: challenge.category ?? null,
     difficulty: challenge.difficulty ?? null,
-    description: challenge.description ?? '',
-    statement: challenge.statement ?? '',
-    tags: Array.isArray(challenge.tags) ? challenge.tags : [],
-    learningGoals: challenge.metadata?.learningGoals ?? [],
-    hintTopics: challenge.metadata?.hintTopics ?? [],
     score: challenge.score ?? null,
-    edition: challenge.edition ?? null,
-    state: challenge.state ?? null,
-    sourceUrl: challenge.sourceUrl ?? null,
-    demo: challenge.demo === true,
+    tags: Array.isArray(challenge.tags) ? challenge.tags.slice(0, 12) : [],
     general: false,
   };
+}
+
+/** Restituisce i contesti autorizzati, oppure null se un ID non è nel catalogo. */
+export function toPromptContexts(ids = []) {
+  if (!Array.isArray(ids) || ids.length === 0) return [toPromptContext(null)];
+  const contexts = [];
+  for (const id of ids) {
+    const challenge = findChallengeById(id);
+    if (!challenge) return null;
+    contexts.push(toPromptContext(challenge));
+  }
+  return contexts;
 }

@@ -4,9 +4,11 @@ export const MAX_BODY_BYTES = 16_000;
 export const MAX_MESSAGE_CHARS = 4_000;
 export const MAX_HISTORY_MESSAGES = 12;
 export const MAX_HISTORY_CHARS = 8_000;
+export const MAX_CONTEXT_CHALLENGES = 6;
 export const ALLOWED_ROLES = new Set(['user', 'assistant']);
 export const GENERAL_CHALLENGE_ID = 'general';
 
+const ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 const encoder = new TextEncoder();
 const bytes = (value) => encoder.encode(value).length;
 
@@ -15,8 +17,9 @@ function clean(value, maxChars) {
 }
 
 /**
- * Il contesto della challenge NON è accettato dal client: viene ricostruito
- * lato server da challengeId. Il campo `challenge` viene ignorato.
+ * Il contesto delle challenge NON è accettato dal client: vengono accettati
+ * solo ID, che il server risolve nel catalogo authoritative. Qualsiasi campo
+ * `challenge` inviato dal browser viene ignorato.
  *
  * @returns {{ok: true, value: object} | {ok: false, error: string}}
  */
@@ -44,9 +47,22 @@ export function parseChatRequest(rawBody) {
   }
   const message = body.message.trim();
 
-  const challengeId = clean(body.challengeId, 64);
-  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(challengeId)) {
-    return { ok: false, error: 'Identificativo della challenge non valido.' };
+  // Compatibilità: i client storici inviavano un singolo `challengeId`.
+  const rawIds = body.challengeIds !== undefined
+    ? body.challengeIds
+    : (body.challengeId ? [body.challengeId] : []);
+  if (!Array.isArray(rawIds) || rawIds.length > MAX_CONTEXT_CHALLENGES) {
+    return { ok: false, error: `Puoi selezionare al massimo ${MAX_CONTEXT_CHALLENGES} challenge.` };
+  }
+
+  const challengeIds = [];
+  for (const rawId of rawIds) {
+    const id = clean(rawId, 64);
+    if (!ID_PATTERN.test(id)) {
+      return { ok: false, error: 'Identificativo della challenge non valido.' };
+    }
+    if (id === GENERAL_CHALLENGE_ID) continue;
+    if (!challengeIds.includes(id)) challengeIds.push(id);
   }
 
   const rawHistory = body.history === undefined ? [] : body.history;
@@ -69,5 +85,5 @@ export function parseChatRequest(rawBody) {
     history.push({ role: item.role, content });
   }
 
-  return { ok: true, value: { message, challengeId, history } };
+  return { ok: true, value: { message, challengeIds, history } };
 }

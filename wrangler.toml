@@ -3,10 +3,13 @@ compatibility_date = "2025-04-01"
 pages_build_output_dir = "public"
 
 # Il binding AI è opzionale: senza di esso il backend risponde in modalità DEMO.
-# Per abilitarlo, decommentare e sostituire <ACCOUNT_ID> con il proprio account:
-# [ai]
-# binding = "AI"
+# Di default resta commentato. Per abilitarlo, decommentare le righe seguenti
+# oppure aggiungere il binding da Dashboard Cloudflare (vedi docs/CLOUDFLARE.md).
+# Non inserire token o API key in questo file.
+[ai]
+binding = "AI"
 
 # [vars]
-# Modello predefinito verificato (functions/lib/model.js). Impostare solo per override.
-# AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+# Modello predefinito: @cf/zai-org/glm-4.7-flash (functions/lib/model.js).
+# Impostare AI_MODEL solo per un override server-side; non è richiesto per il default.
+# AI_MODEL = "@cf/zai-org/glm-4.7-flash"

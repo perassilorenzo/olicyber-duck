@@ -1,6 +1,6 @@
 import { DEFAULT_MODEL } from '../lib/model.js';
 import { CATALOG_META } from '../lib/catalog.js';
-import { RAG_META } from '../lib/rag.js';
+import { KNOWLEDGE_META } from '../lib/knowledge.js';
 
 function configuredModel(env) {
   const candidate = typeof env.AI_MODEL === 'string' ? env.AI_MODEL.trim() : '';
@@ -12,6 +12,7 @@ export async function onRequestGet({ env }) {
   return new Response(JSON.stringify({
     mode: enabled ? 'ai' : 'demo',
     model: enabled ? configuredModel(env) : null,
+    streaming: enabled,
     note: enabled
       ? 'Binding AI configurato: le risposte sono generate dal modello.'
       : 'Binding AI non configurato: il backend risponde in modalità DEMO.',
@@ -23,13 +24,19 @@ export async function onRequestGet({ env }) {
       source: CATALOG_META.source.name,
       lastSync: CATALOG_META.source.importedAt,
     },
+    knowledge: {
+      connected: KNOWLEDGE_META.connected,
+      source: KNOWLEDGE_META.source,
+      status: KNOWLEDGE_META.status,
+      documents: KNOWLEDGE_META.documents,
+      chunks: KNOWLEDGE_META.chunks,
+      policy: KNOWLEDGE_META.policy,
+    },
+    // Chiave storica: ora descrive la knowledge base didattica, non i dati delle challenge.
     rag: {
-      connected: RAG_META.connected,
-      documents: RAG_META.documents,
-      chunks: RAG_META.chunks,
-      generatedAt: RAG_META.generatedAt,
-      source: RAG_META.source,
-      settings: RAG_META.settings,
+      connected: KNOWLEDGE_META.connected,
+      documents: KNOWLEDGE_META.documents,
+      chunks: KNOWLEDGE_META.chunks,
     },
   }), {
     headers: {

@@ -311,7 +311,12 @@ export function createDetails({ store, getChallenge, onAsk }) {
     const ask = element('button', 'btn btn--primary btn--sm', 'Chiedi a OliDuck');
     ask.id = 'ask-from-details';
     ask.type = 'button';
-    ask.addEventListener('click', () => { closeDrawer(); onAsk?.(); });
+    // Il drawer non modifica la selezione: passa solo la challenge mostrata a chi decide.
+    ask.addEventListener('click', () => {
+      const target = challenge;
+      closeDrawer();
+      onAsk?.(target);
+    });
     body.append(ask);
     if (restoreStatusFocus) cycle.focus({ preventScroll: true });
   }

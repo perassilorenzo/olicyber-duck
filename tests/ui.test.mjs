@@ -61,11 +61,14 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
   window.matchMedia = () => ({ matches: compact, addListener() {}, removeListener() {} });
 
   const payloads = [];
-  let chatHandler = async (payload) => jsonResponse({
-    reply: `[DEMO] Prima ipotesi per ${payload.challengeId}: osserva i dati in ingresso.`,
-    mode: 'demo',
-    challengeId: payload.challengeId,
-  });
+  let chatHandler = async (payload) => {
+    const ids = payload.challengeIds || [];
+    return jsonResponse({
+      reply: `[DEMO] Prima ipotesi per ${ids[0] || 'generale'}: osserva i dati in ingresso.`,
+      mode: 'demo',
+      challengeIds: ids,
+    });
+  };
 
   globalThis.fetch = async (url, options) => {
     const target = String(url);
@@ -161,7 +164,8 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
   assert.ok(bubbles.some((text) => text.includes('Come inizio?')));
   assert.ok(bubbles.some((text) => text.includes('Prima ipotesi')));
   assert.equal(doc.getElementById('chat-error').hidden, true);
-  assert.equal(payloads.at(-1).challengeId, 'demo-web-01');
+  assert.deepEqual(payloads.at(-1).challengeIds, ['demo-web-01']);
+  assert.equal('challengeId' in payloads.at(-1), false);
   assert.equal('challenge' in payloads.at(-1), false);
   assert.equal(payloads.at(-1).history.length, 0);
 
@@ -173,6 +177,9 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
   assert.equal(doc.getElementById('details-title').textContent, 'Il parametro dimenticato');
   assert.equal(workspace.hasAttribute('inert'), true);
   assert.equal(doc.activeElement.id, 'close-details');
+  // Il drawer mostra una challenge già selezionata senza modificare la chat.
+  assert.deepEqual(JSON.parse(window.localStorage.getItem('oliduck:state')).selectedChallengeIds, ['demo-web-01']);
+  assert.equal(doc.getElementById('mode-challenge').getAttribute('aria-checked'), 'true');
 
   // Focus trap: Tab e Shift+Tab restano dentro il drawer.
   doc.activeElement.dispatchEvent(new window.KeyboardEvent('keydown', {
@@ -200,6 +207,8 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
   assert.equal(doc.getElementById('drawer-layer').hidden, true);
   assert.equal(workspace.hasAttribute('inert'), false);
   assert.equal(doc.getElementById('details-drawer').contains(doc.activeElement), false);
+  assert.deepEqual(JSON.parse(window.localStorage.getItem('oliduck:state')).selectedChallengeIds, ['demo-web-01']);
+  assert.equal(doc.getElementById('mode-challenge').getAttribute('aria-checked'), 'true');
 
   // Modalità generale: conversazione separata e streaming SSE cumulativo.
   chatHandler = async () => sseResponse(['Principio ', 'generale.']);
@@ -212,7 +221,8 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
   await wait(100);
   bubbles = [...doc.querySelectorAll('.chat-message__bubble')].map((node) => node.textContent);
   assert.ok(bubbles.includes('Principio generale.'));
-  assert.equal(payloads.at(-1).challengeId, 'general');
+  assert.deepEqual(payloads.at(-1).challengeIds, []);
+  assert.equal('challengeId' in payloads.at(-1), false);
   assert.equal(payloads.at(-1).history.length, 0);
 
   // Tornando alla challenge ritroviamo la conversazione dedicata.
@@ -280,8 +290,71 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
 
   const generalSaved = JSON.parse(window.localStorage.getItem('oliduck:state'));
   assert.ok(generalSaved.conversations.general.length >= 1);
-  assert.ok(generalSaved.conversations['demo-web-01'].length >= 2);
+  assert.ok(generalSaved.conversations['ctx:demo-web-01'].length >= 2);
   assert.equal(generalSaved.conversations.general.some((item) => item.content === 'RISPOSTA_VECCHIA'), false);
+
+  // Selezione multipla: chip visibili, etichette accessibili e payload condiviso.
+  doc.getElementById('focus-assistant').click();
+  doc.querySelector('#challenge-list .challenge-item[data-id="demo-crypto-01"] .challenge-item__chat').click();
+  await wait();
+  const savedMulti = () => JSON.parse(window.localStorage.getItem('oliduck:state')).selectedChallengeIds;
+  assert.deepEqual(savedMulti(), ['demo-web-01', 'demo-crypto-01']);
+  assert.equal(doc.getElementById('mode-challenge').getAttribute('aria-checked'), 'true');
+  let chips = [...doc.querySelectorAll('#assistant-context-chips .context-chip')];
+  assert.deepEqual(chips.map((chip) => chip.dataset.id), ['demo-web-01', 'demo-crypto-01']);
+  assert.equal(chips[0].querySelector('button').getAttribute('aria-label'), 'Rimuovi Il parametro dimenticato dal contesto');
+  assert.match(doc.getElementById('assistant-context-label').textContent, /Il parametro dimenticato/);
+  assert.match(doc.getElementById('assistant-context-label').textContent, /Il turno che si ripete/);
+
+  chatHandler = async (payload) => jsonResponse({
+    reply: `Contesto: ${payload.challengeIds.join(', ')}`, mode: 'demo', challengeIds: payload.challengeIds,
+  });
+  doc.getElementById('chat-input').value = 'Confronto le due challenge';
+  doc.getElementById('chat-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  await wait(80);
+  assert.deepEqual(payloads.at(-1).challengeIds, ['demo-web-01', 'demo-crypto-01']);
+  assert.equal('challengeId' in payloads.at(-1), false);
+  bubbles = [...doc.querySelectorAll('.chat-message__bubble')].map((node) => node.textContent);
+  assert.ok(bubbles.some((text) => text.includes('Contesto: demo-web-01, demo-crypto-01')));
+
+  // Aprire i dettagli di una challenge non selezionata lascia invariata la chat.
+  doc.querySelector('#challenge-list .challenge-item[data-id="demo-pwn-01"] .challenge-item__main').click();
+  await wait();
+  assert.equal(doc.getElementById('details-title').textContent, 'Il confine del buffer');
+  assert.deepEqual(savedMulti(), ['demo-web-01', 'demo-crypto-01']);
+  assert.equal(doc.getElementById('mode-challenge').getAttribute('aria-checked'), 'true');
+  assert.match(doc.getElementById('assistant-context-label').textContent, /Il parametro dimenticato/);
+
+  // "Chiedi a OliDuck" aggiunge la challenge del drawer, chiude e dà il focus all'assistente.
+  doc.getElementById('ask-from-details').click();
+  await wait();
+  assert.deepEqual(savedMulti(), ['demo-web-01', 'demo-crypto-01', 'demo-pwn-01']);
+  assert.equal(doc.getElementById('drawer-layer').hidden, true);
+  assert.equal(doc.activeElement.id, 'chat-input');
+  chips = [...doc.querySelectorAll('#assistant-context-chips .context-chip')];
+  assert.equal(chips.length, 3);
+
+  // La rimozione di una chip tocca solo quella challenge.
+  doc.querySelector('#assistant-context-chips .context-chip[data-id="demo-crypto-01"] button').click();
+  await wait();
+  assert.deepEqual(savedMulti(), ['demo-web-01', 'demo-pwn-01']);
+  assert.equal(doc.querySelectorAll('#assistant-context-chips .context-chip').length, 2);
+
+  // Generale resta disponibile anche con selezioni: nessun contesto nel payload.
+  doc.getElementById('mode-general').click();
+  await wait();
+  assert.equal(doc.getElementById('mode-general').getAttribute('aria-checked'), 'true');
+  assert.equal(doc.querySelectorAll('#assistant-context-chips .context-chip').length, 2);
+  assert.match(doc.getElementById('assistant-context-label').textContent, /^Modalità generale/);
+  assert.match(doc.getElementById('assistant-context-label').textContent, /Il parametro dimenticato/);
+  chatHandler = async (payload) => jsonResponse({ reply: 'Generale senza contesto', mode: 'demo', challengeIds: payload.challengeIds });
+  doc.getElementById('chat-input').value = 'Resto in generale';
+  doc.getElementById('chat-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  await wait(80);
+  assert.deepEqual(payloads.at(-1).challengeIds, []);
+  bubbles = [...doc.querySelectorAll('.chat-message__bubble')].map((node) => node.textContent);
+  assert.ok(bubbles.includes('Generale senza contesto'));
+
   assert.deepEqual(consoleErrors.map((error) => error.message), []);
 
   dom.window.close();

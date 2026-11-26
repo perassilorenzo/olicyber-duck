@@ -118,7 +118,7 @@ test('card compatte mostrano solo dati reali e separano dettaglio dalla chat', a
   const library = createLibrary({
     store,
     challenges,
-    onSelect: (challenge) => selected.push(challenge.id),
+    onSelect: (challenge, nowSelected) => selected.push([challenge.id, nowSelected]),
     onOpenDetails: (challenge) => opened.push(challenge.id),
   });
   store.subscribe(() => library.syncFilters());
@@ -154,10 +154,27 @@ test('card compatte mostrano solo dati reali e separano dettaglio dalla chat', a
   assert.equal(store.state.preferences.filters.edition, 'all');
 
   rows[0].querySelector('.challenge-item__chat').click();
-  assert.deepEqual(selected, ['olicyber-9']);
+  assert.deepEqual(selected, [['olicyber-9', true]]);
+  assert.deepEqual(store.getSelectedChallengeIds(), ['olicyber-9']);
   assert.deepEqual(opened, []);
+  // La card mostra lo stato di selezione e il pulsante ha un'etichetta esplicita.
+  let first = [...doc.querySelectorAll('#challenge-items .challenge-item')][0];
+  assert.equal(first.classList.contains('is-selected'), true);
+  assert.equal(first.querySelector('.challenge-item__chat').getAttribute('aria-pressed'), 'true');
+  assert.match(first.querySelector('.challenge-item__chat').getAttribute('aria-label'), /^Rimuovi .+ dal contesto della chat$/);
+
   rows[0].querySelector('.challenge-item__main').click();
   assert.deepEqual(opened, ['olicyber-9']);
+  assert.deepEqual(store.getSelectedChallengeIds(), ['olicyber-9']);
+
+  // Un secondo clic sul pulsante Chat rimuove solo quella challenge.
+  first.querySelector('.challenge-item__chat').click();
+  assert.deepEqual(store.getSelectedChallengeIds(), []);
+  assert.equal(selected.at(-1)[1], false);
+  first = [...doc.querySelectorAll('#challenge-items .challenge-item')][0];
+  assert.equal(first.classList.contains('is-selected'), false);
+  assert.equal(first.querySelector('.challenge-item__chat').getAttribute('aria-pressed'), 'false');
+  assert.match(first.querySelector('.challenge-item__chat').getAttribute('aria-label'), /^Aggiungi .+ al contesto della chat$/);
 
   const search = doc.getElementById('search-input');
   search.value = 'inesistente';
@@ -168,6 +185,57 @@ test('card compatte mostrano solo dati reali e separano dettaglio dalla chat', a
   doc.querySelector('.empty-list button').click();
   assert.equal(library.visible.length, 2);
   assert.equal(doc.querySelector('.empty-list'), null);
+
+  dom.window.close();
+});
+
+test('selezione multipla: due challenge attive e limite massimo di 6 con toast', async () => {
+  const dom = setupDom();
+  const { LocalStore } = await import('../public/src/store.js');
+  const { createLibrary } = await import('../public/src/library.js');
+  const challenges = Array.from({ length: 7 }, (_, index) => ({
+    id: `multi-${index}`,
+    title: `Challenge ${index}`,
+    tags: [], attachments: [], metadata: {}, provenance: { verified: false },
+  }));
+  const store = new LocalStore();
+  const opened = [];
+  const library = createLibrary({
+    store,
+    challenges,
+    onSelect() {},
+    onOpenDetails: (challenge) => opened.push(challenge.id),
+  });
+  const doc = dom.window.document;
+
+  function chatButton(id) {
+    return doc.querySelector(`.challenge-item[data-id="${id}"] .challenge-item__chat`);
+  }
+
+  chatButton('multi-0').click();
+  chatButton('multi-1').click();
+  library.render();
+  assert.deepEqual(store.getSelectedChallengeIds(), ['multi-0', 'multi-1']);
+  assert.equal(doc.querySelectorAll('.challenge-item.is-selected').length, 2);
+  assert.equal(chatButton('multi-0').getAttribute('aria-pressed'), 'true');
+  assert.equal(chatButton('multi-1').getAttribute('aria-pressed'), 'true');
+  assert.equal(chatButton('multi-2').getAttribute('aria-pressed'), 'false');
+
+  for (let index = 2; index < 6; index += 1) chatButton(`multi-${index}`).click();
+  library.render();
+  assert.deepEqual(store.getSelectedChallengeIds(), challenges.slice(0, 6).map((item) => item.id));
+  assert.equal(doc.querySelectorAll('.challenge-item.is-selected').length, 6);
+
+  doc.getElementById('toast').textContent = '';
+  chatButton('multi-6').click();
+  assert.deepEqual(store.getSelectedChallengeIds(), challenges.slice(0, 6).map((item) => item.id));
+  assert.match(doc.getElementById('toast').textContent, /al massimo 6 challenge/);
+  assert.equal(doc.getElementById('toast').hidden, false);
+
+  // L'altro pulsante della card continua ad aprire solo i dettagli.
+  doc.querySelector('.challenge-item[data-id="multi-2"] .challenge-item__main').click();
+  assert.deepEqual(opened, ['multi-2']);
+  assert.equal(store.getSelectedChallengeIds().includes('multi-2'), true);
 
   dom.window.close();
 });

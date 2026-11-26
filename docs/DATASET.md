@@ -33,6 +33,13 @@ L'overwrite produce uno catalogo con `status: "unverified-derived"`: non equival
 
 Questo dataset di fonti pubbliche è distinto dall'import browser che alimenta l'app: `npm run dataset:browser-import` genera il catalogo reale in `public/data/olicyber-challenges.json` e l'indice RAG runtime in `functions/data/rag-index.json`. Il `rag-index.json` descritto sotto, generato da `dataset:build`, contiene invece solo chunk della KB autorizzata (oggi vuota) e **non** viene usato dal tutor. Vedi [`CATALOG-IMPORT.md`](CATALOG-IMPORT.md).
 
+## Nota architetturale (2026-11-26)
+
+- L'indice `functions/data/rag-index.json`, generato da `scripts/import-browser-export.mjs`, è **legacy**: continua a essere prodotto dall'import browser, ma **non è più usato dal tutor a runtime**. Non va considerato una knowledge base autorizzata per l'AI.
+- La KB autorizzata del dataset pubblico (`learningKnowledgeBase`) resta **vuota (0 documenti, 0 chunk)**: da essa non deriva alcun contesto per il tutor.
+- Il tutor usa esclusivamente la nuova KB didattica originale `functions/data/teaching-kb.json` (ponte CJS `teaching-kb-data.cjs`), che contiene solo definizioni generali di concetti di informatica/cybersecurity scritte per questo progetto. Non contiene descrizioni di challenge, statement, hint, flag, soluzioni, writeup, payload o allegati.
+- Il contesto challenge inviato al modello è ricostruito lato server da soli metadati pubblici: vedi [`AI-ARCHITECTURE.md`](AI-ARCHITECTURE.md).
+
 ## Struttura del dataset
 
 `dataset-input/catalog.json` contiene tre sezioni distinte:
@@ -89,7 +96,7 @@ Gli ID derivano da percorsi e ID sorgente; i file sono identificati per SHA-256.
 
 - Il numero totale ufficiale delle challenge Training non è pubblico: la completezza non è verificabile.
 - Il catalogo applicativo demo resta `unverified-demo` finché non arriva un export autorizzato.
-- Il corpus RAG autorizzato è vuoto (0 documenti, 0 chunk): non è pronto per collegare il tutor. Non sono stati inventati contenuti sostitutivi.
+- Il corpus RAG autorizzato è vuoto (0 documenti, 0 chunk): non è pronto per collegare il tutor. Non sono stati inventati contenuti sostitutivi. Il tutor usa invece la KB didattica separata descritta nella nota architetturale.
 - I flag presenti nelle writeup restano confinati nel Solution Archive locale: non sono presenti nella KB autorizzata, nell'indice RAG o nel catalogo applicativo generato.
 - Il Solution Archive contiene flag reali: i flag `restricted`, `exposePublicly: false` e `cloudflareUploadAllowed: false` non sostituiscono un controllo di accesso.
 - Le licenze dei singoli allegati non sono dichiarate separatamente: non ne viene assunto il riutilizzo.

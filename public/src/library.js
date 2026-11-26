@@ -1,6 +1,7 @@
 /** Libreria v2: card compatte in ordine dataset, filtri derivati e navigazione da tastiera. */
 
-import { byId } from './utils.js';
+import { byId, toast } from './utils.js';
+import { MAX_SELECTED_CHALLENGES } from './store.js';
 import { challengeProvenance } from './provenance.js';
 import {
   DEFAULT_SORT, SORT_OPTIONS, deriveFacets, filterChallenges, sortChallenges,
@@ -134,7 +135,7 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
 
   function itemNode(challenge, index) {
     const status = store.getStatus(challenge.id);
-    const selected = store.state.selectedChallengeId === challenge.id;
+    const selected = store.getSelectedChallengeIds().includes(challenge.id);
     const provenance = challengeProvenance(challenge);
     const wrapper = node('article', 'challenge-item');
     wrapper.dataset.id = challenge.id;
@@ -205,8 +206,22 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
     const chat = node('button', 'challenge-item__chat', 'Chat');
     chat.type = 'button';
     chat.setAttribute('aria-pressed', String(selected));
-    chat.setAttribute('aria-label', `Apri la chat di ${challenge.title}`);
-    chat.addEventListener('click', () => onSelect(challenge));
+    chat.setAttribute(
+      'aria-label',
+      selected
+        ? `Rimuovi ${challenge.title} dal contesto della chat`
+        : `Aggiungi ${challenge.title} al contesto della chat`,
+    );
+    chat.addEventListener('click', () => {
+      const ids = store.getSelectedChallengeIds();
+      const isSelected = ids.includes(challenge.id);
+      if (!isSelected && ids.length >= MAX_SELECTED_CHALLENGES) {
+        toast(`Puoi selezionare al massimo ${MAX_SELECTED_CHALLENGES} challenge`);
+        return;
+      }
+      const nowSelected = store.toggleChallengeSelection(challenge.id);
+      onSelect?.(challenge, nowSelected);
+    });
 
     wrapper.append(main, chat);
     return wrapper;

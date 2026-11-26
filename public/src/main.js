@@ -2,7 +2,7 @@
 
 import { byId, confirmDialog, toast } from './utils.js';
 import { loadCatalog } from './catalog.js';
-import { LocalStore } from './store.js';
+import { LocalStore, MAX_SELECTED_CHALLENGES } from './store.js';
 import { createLibrary } from './library.js';
 import { createDetails } from './details.js';
 import { createAssistant } from './assistant.js';
@@ -16,9 +16,12 @@ let library;
 let details;
 let assistant;
 let panels;
+/** Challenge mostrata nel drawer: indipendente dalla selezione della chat. */
+let detailChallengeId = null;
 
 const byChallengeId = (id) => catalog.challenges.find((challenge) => challenge.id === id) || null;
-const getSelectedChallenge = () => byChallengeId(store.state.selectedChallengeId);
+const getDetailChallenge = () => byChallengeId(detailChallengeId);
+const getSelectedChallenges = () => store.getSelectedChallengeIds().map(byChallengeId).filter(Boolean);
 
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
@@ -39,24 +42,32 @@ function applyPreferenceUI() {
   if (!panels.isCompact()) panels.setView(activePanel, { persist: false });
 }
 
-function selectChallenge(challenge) {
-  store.selectChallenge(challenge.id);
-  assistant.selectChallenge(challenge);
-  details.render();
+/** La libreria ha già aggiornato lo store: qui solo effetti collaterali sull'UI. */
+function selectChallenge(challenge, nowSelected) {
+  if (nowSelected) assistant.switchMode('challenge');
   if (panels.isCompact()) panels.setView('assistant');
   assistant.focus();
 }
 
-function askAssistant() {
+function askAssistant(challenge = getDetailChallenge()) {
+  if (challenge) {
+    const ids = store.getSelectedChallengeIds();
+    if (!ids.includes(challenge.id)) {
+      if (ids.length >= MAX_SELECTED_CHALLENGES) {
+        toast(`Puoi selezionare al massimo ${MAX_SELECTED_CHALLENGES} challenge`);
+      } else {
+        store.setSelectedChallengeIds([...ids, challenge.id]);
+      }
+    }
+  }
   details.close();
   panels.setView('assistant');
-  assistant.switchMode('challenge');
+  if (store.getSelectedChallengeIds().length) assistant.switchMode('challenge');
   assistant.focus();
 }
 
 function openDetails(challenge) {
-  store.selectChallenge(challenge.id);
-  assistant.selectChallenge(challenge);
+  detailChallengeId = challenge.id;
   details.render();
   details.open();
 }
@@ -110,7 +121,8 @@ function setupSettings() {
     const ok = await confirmDialog('Cancellare tutti i dati locali (stati, conversazioni, preferenze)?');
     if (!ok) return;
     store.clearAll();
-    assistant.selectChallenge(getSelectedChallenge());
+    detailChallengeId = null;
+    assistant.syncSelection();
     assistant.switchMode('general');
     details.render();
     toast('Dati locali cancellati.');
@@ -140,13 +152,13 @@ async function init() {
 
   assistant = createAssistant({
     store,
-    getChallenge: getSelectedChallenge,
+    getSelectedChallenges,
     onConversationChange: () => library?.render(),
   });
 
   details = createDetails({
     store,
-    getChallenge: getSelectedChallenge,
+    getChallenge: getDetailChallenge,
     onAsk: askAssistant,
   });
 
@@ -187,7 +199,8 @@ async function init() {
     const filtersChanged = JSON.stringify(previous.preferences.filters)
       !== JSON.stringify(state.preferences.filters);
     const statusesChanged = JSON.stringify(previous.statuses) !== JSON.stringify(state.statuses);
-    const selectionChanged = previous.selectedChallengeId !== state.selectedChallengeId;
+    const selectionChanged = JSON.stringify(previous.selectedChallengeIds)
+      !== JSON.stringify(state.selectedChallengeIds);
     const themeChanged = previous.preferences.theme !== state.preferences.theme;
     const layoutChanged = previous.preferences.panelWidth !== state.preferences.panelWidth
       || previous.preferences.activePanel !== state.preferences.activePanel;
@@ -195,12 +208,13 @@ async function init() {
     if (filtersChanged) library.syncFilters();
     else if (statusesChanged || selectionChanged) library.render();
 
-    if (statusesChanged || selectionChanged) details.render();
+    if (statusesChanged) details.render();
+    if (selectionChanged) assistant.syncSelection();
     if (themeChanged) applyTheme(state.preferences.theme);
     if (layoutChanged) applyPreferenceUI();
   });
 
-  assistant.selectChallenge(getSelectedChallenge());
+  assistant.syncSelection();
   checkAssistantStatus();
 }
 

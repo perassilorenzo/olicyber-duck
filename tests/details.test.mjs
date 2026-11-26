@@ -240,3 +240,40 @@ test('il dettaglio di una challenge reale mostra metadati e allegati senza dupli
     dom.window.close();
   }
 });
+
+test('apertura e chiusura del drawer non toccano la selezione; Chiedi passa la challenge', async () => {
+  const dom = new JSDOM(html, { url: 'http://localhost:8788/', pretendToBeVisual: true });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.localStorage = dom.window.localStorage;
+  globalThis.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
+  dom.window.localStorage.clear();
+
+  const { LocalStore } = await import('../public/src/store.js');
+  const { createDetails } = await import('../public/src/details.js');
+  const doc = dom.window.document;
+  const store = new LocalStore();
+  store.setSelectedChallengeIds(['gia-selezionata']);
+  const current = baseChallenge();
+  const asked = [];
+  const details = createDetails({
+    store,
+    getChallenge: () => current,
+    onAsk: (challenge) => asked.push(challenge.id),
+  });
+
+  details.open();
+  assert.deepEqual(store.getSelectedChallengeIds(), ['gia-selezionata']);
+  assert.equal(doc.getElementById('details-drawer').getAttribute('aria-hidden'), 'false');
+  details.close();
+  assert.deepEqual(store.getSelectedChallengeIds(), ['gia-selezionata']);
+
+  details.open();
+  doc.getElementById('ask-from-details').click();
+  assert.deepEqual(asked, ['test-1']);
+  assert.deepEqual(store.getSelectedChallengeIds(), ['gia-selezionata']);
+  assert.equal(doc.getElementById('drawer-layer').hidden, true);
+  assert.equal(doc.getElementById('details-drawer').getAttribute('aria-hidden'), 'true');
+
+  dom.window.close();
+});

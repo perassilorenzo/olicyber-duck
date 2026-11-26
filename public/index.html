@@ -159,7 +159,10 @@
           <span class="assistant-context__icon" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 3V5Z" /></svg>
           </span>
-          <span id="assistant-context-label">Modalità generale: chiedi pure un concetto di cybersecurity.</span>
+          <div class="assistant-context__content">
+            <span id="assistant-context-label">Modalità generale: chiedi pure un concetto di cybersecurity.</span>
+            <div class="assistant-context__chips" id="assistant-context-chips" aria-label="Challenge incluse nel contesto della chat" hidden></div>
+          </div>
         </div>
 
         <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-label="Cronologia conversazione">

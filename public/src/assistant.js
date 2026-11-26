@@ -1,8 +1,8 @@
-/** Assistente: conversazioni separate per challenge, modalità generale, streaming e annullamento sicuro. */
+/** Assistente: conversazioni per contesto multiplo, modalità generale, streaming e annullamento sicuro. */
 
 import { byId, formatTime, toast, confirmDialog } from './utils.js';
 import { sendChat, ApiError } from './api.js';
-import { GENERAL_CONVERSATION_ID } from './store.js';
+import { GENERAL_CONVERSATION_ID, SELECTED_CHALLENGE_ID_PATTERN } from './store.js';
 
 const MAX_HISTORY = 12;
 
@@ -13,7 +13,12 @@ function node(tag, className, text) {
   return element;
 }
 
-export function createAssistant({ store, getChallenge, onConversationChange }) {
+/** Chiave stabile: l'ordine di selezione non deve cambiare la conversazione. */
+function conversationKeyFor(ids) {
+  return ids.length ? `ctx:${[...ids].sort().join('|')}` : GENERAL_CONVERSATION_ID;
+}
+
+export function createAssistant({ store, getSelectedChallenges, getChallenge, onConversationChange }) {
   const log = byId('chat-log');
   const empty = byId('chat-empty');
   const form = byId('chat-form');
@@ -22,6 +27,7 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
   const cancelButton = byId('cancel-chat');
   const clearButton = byId('clear-chat');
   const contextLabel = byId('assistant-context-label');
+  const contextChips = byId('assistant-context-chips');
   const status = byId('chat-status');
   const errorBox = byId('chat-error');
   const errorMessage = byId('chat-error-message');
@@ -29,9 +35,17 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
   const modeButtons = [byId('mode-general'), byId('mode-challenge')];
   const challengeHint = byId('mode-challenge-hint');
 
-  let challenge = getChallenge() || null;
-  let mode = challenge ? 'challenge' : 'general';
-  let key = challenge ? challenge.id : GENERAL_CONVERSATION_ID;
+  function readSelection() {
+    const provider = getSelectedChallenges
+      || (() => { const challenge = getChallenge?.(); return challenge ? [challenge] : []; });
+    return (provider() || [])
+      .filter((challenge) => challenge && typeof challenge.id === 'string'
+        && SELECTED_CHALLENGE_ID_PATTERN.test(challenge.id));
+  }
+
+  let selections = readSelection();
+  let mode = selections.length ? 'challenge' : 'general';
+  let key = conversationKeyFor(selections.map((challenge) => challenge.id));
   let active = null;
   let aiMode = null;
   let statusMessage = '';
@@ -45,13 +59,38 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
     return wrapper;
   }
 
+  function selectedTitles() {
+    return selections.map((challenge) => challenge.title);
+  }
+
   function greeting() {
-    if (mode === 'challenge' && challenge) {
-      const goals = challenge.metadata?.learningGoals || [];
-      const suffix = goals.length ? ` Obiettivi: ${goals.join(', ')}.` : '';
-      return `Contesto pronto: "${challenge.title}" (${challenge.category || 'categoria non indicata'}, ${challenge.difficulty || 'difficoltà non indicata'}).${suffix}\n\nDescrivi cosa hai capito, chiedi un primo hint o proponi il tuo ragionamento: procederò per passaggi, senza darti subito una soluzione.`;
+    if (mode === 'challenge' && selections.length) {
+      const titles = selectedTitles().map((title) => `"${title}"`).join(', ');
+      return `Contesto pronto: ${titles}.\n\nDescrivi cosa hai capito, chiedi un primo hint o proponi il tuo ragionamento: procederò per passaggi, senza darti subito una soluzione.`;
     }
-    return 'Modalità generale: nessuna challenge selezionata. Puoi chiedermi di spiegare un concetto di cybersecurity, un metodo di analisi o come impostare lo studio. Per un tutor contestuale, apri i dettagli di una challenge e scegli la modalità Challenge.';
+    const pending = selectedTitles().length
+      ? ` Hai ${selectedTitles().length} challenge selezionate (${selectedTitles().join(', ')}), ma la conversazione generale non le include.`
+      : ' Per un tutor contestuale, seleziona una challenge dalla libreria.';
+    return `Modalità generale: nessuna challenge inclusa nel contesto.${pending} Puoi chiedermi di spiegare un concetto di cybersecurity, un metodo di analisi o come impostare lo studio.`;
+  }
+
+  function renderChips() {
+    if (!contextChips) return;
+    contextChips.replaceChildren();
+    contextChips.hidden = selections.length === 0;
+    for (const challenge of selections) {
+      const chip = node('span', 'context-chip');
+      chip.dataset.id = challenge.id;
+      chip.append(node('span', 'context-chip__label', challenge.title));
+      const remove = node('button', 'context-chip__remove', '×');
+      remove.type = 'button';
+      remove.setAttribute('aria-label', `Rimuovi ${challenge.title} dal contesto`);
+      remove.addEventListener('click', () => {
+        store.setSelectedChallengeIds(store.getSelectedChallengeIds().filter((id) => id !== challenge.id));
+      });
+      chip.append(remove);
+      contextChips.append(chip);
+    }
   }
 
   function hideError() {
@@ -72,24 +111,29 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
 
   function render() {
     const busyHere = Boolean(active && active.key === key);
-    const canChallenge = Boolean(challenge);
+    const canChallenge = selections.length > 0;
     for (const button of modeButtons) {
       const selected = button.id === (mode === 'general' ? 'mode-general' : 'mode-challenge');
       button.setAttribute('aria-checked', String(selected));
       button.tabIndex = selected ? 0 : -1;
       button.classList.toggle('is-active', selected);
     }
-    challengeHint.textContent = canChallenge ? challenge.title : 'Seleziona una challenge';
+    challengeHint.textContent = canChallenge
+      ? (selections.length === 1 ? selections[0].title : `${selections.length} challenge selezionate`)
+      : 'Seleziona una challenge';
 
     const suffix = aiMode === 'demo' ? ' · DEMO' : aiMode === 'error' ? ' · offline' : '';
-    contextLabel.textContent = mode === 'challenge' && canChallenge
-      ? `Challenge: ${challenge.title}${suffix}`
-      : `Modalità generale${suffix}`;
+    const titles = selectedTitles();
+    contextLabel.textContent = mode === 'challenge' && titles.length
+      ? `Challenge: ${titles.join(', ')}${suffix}`
+      : `Modalità generale${titles.length ? ` · selezionate: ${titles.join(', ')}` : ''}${suffix}`;
+    renderChips();
 
     log.replaceChildren();
     empty.hidden = true;
     log.append(messageNode({ role: 'assistant', content: greeting() }));
     for (const message of store.getConversation(key)) log.append(messageNode(message));
+    if (busyHere && active?.typing) log.append(active.typing);
 
     clearButton.disabled = store.getConversation(key).length === 0;
     sendButton.disabled = busyHere || !input.value.trim();
@@ -97,6 +141,24 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
     input.disabled = busyHere;
     status.textContent = busyHere ? 'OliDuck sta rispondendo…' : statusMessage;
     scrollToEnd();
+  }
+
+  /** Rilegge lo store dopo una selezione multipla e mantiene coerente la conversazione. */
+  function syncSelection() {
+    selections = readSelection();
+    if (mode === 'challenge' && !selections.length) mode = 'general';
+    const nextKey = mode === 'challenge'
+      ? conversationKeyFor(selections.map((challenge) => challenge.id))
+      : GENERAL_CONVERSATION_ID;
+    if (nextKey !== key) {
+      if (active) { active.controller.abort(); active = null; }
+      statusMessage = '';
+      input.value = '';
+      input.style.height = '';
+      hideError();
+      key = nextKey;
+    }
+    render();
   }
 
   function finalize(request) {
@@ -109,9 +171,14 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
     const message = String(rawMessage || '').trim();
     if (!message || active) return;
     statusMessage = '';
-    const requestKey = key;
-    if (requestKey !== GENERAL_CONVERSATION_ID && !challenge) {
-      showError('Seleziona una challenge per usare la modalità contestuale.');
+    const requestChallengeIds = mode === 'challenge'
+      ? selections.map((challenge) => challenge.id)
+      : [];
+    const requestKey = mode === 'challenge'
+      ? conversationKeyFor(requestChallengeIds)
+      : GENERAL_CONVERSATION_ID;
+    if (mode === 'challenge' && !requestChallengeIds.length) {
+      showError('Seleziona almeno una challenge per usare la modalità contestuale.');
       return;
     }
 
@@ -143,12 +210,11 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
     const request = { key: requestKey, controller, typing, message };
     active = request;
     render();
-    log.append(typing);
     scrollToEnd();
 
     try {
       const result = await sendChat(
-        { challengeId: requestKey, message, history },
+        { challengeIds: requestChallengeIds, message, history },
         {
           signal: controller.signal,
           onProgress: (cumulative) => {
@@ -214,11 +280,14 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
   });
 
   clearButton.addEventListener('click', async () => {
-    if (!challenge && mode === 'general') {
+    if (mode === 'general') {
       const okGeneral = await confirmDialog('Cancellare la conversazione generale salvata in questo browser?');
       if (!okGeneral) return;
-    } else if (challenge) {
-      const okChallenge = await confirmDialog(`Cancellare la conversazione di "${challenge.title}"? L'operazione non è reversibile.`);
+    } else {
+      const titles = selectedTitles().join(', ');
+      const okChallenge = await confirmDialog(
+        `Cancellare la conversazione di ${titles}? L'operazione non è reversibile.`,
+      );
       if (!okChallenge) return;
     }
     if (active?.key === key) { active.controller.abort(); active = null; }
@@ -233,15 +302,21 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
 
   function switchMode(next) {
     const target = next === 'challenge' ? 'challenge' : 'general';
-    if (target === 'challenge' && !challenge) {
+    if (target === 'challenge') syncSelection();
+    if (target === 'challenge' && !selections.length) {
       showError('Seleziona una challenge dalla libreria per aprire una conversazione contestuale.');
       return;
     }
-    if (target === mode) return;
+    if (target === mode) {
+      if (target === 'challenge') key = conversationKeyFor(selections.map((challenge) => challenge.id));
+      return;
+    }
     if (active) { active.controller.abort(); active = null; }
     statusMessage = '';
     mode = target;
-    key = target === 'challenge' ? challenge.id : GENERAL_CONVERSATION_ID;
+    key = target === 'challenge'
+      ? conversationKeyFor(selections.map((challenge) => challenge.id))
+      : GENERAL_CONVERSATION_ID;
     input.value = '';
     input.style.height = '';
     hideError();
@@ -263,27 +338,18 @@ export function createAssistant({ store, getChallenge, onConversationChange }) {
 
   return {
     render,
-    selectChallenge(next) {
-      const id = next?.id || null;
-      if (id === challenge?.id && mode === 'challenge') return;
-      if (active) { active.controller.abort(); active = null; }
-      statusMessage = '';
-      challenge = next || null;
-      if (challenge) {
-        mode = 'challenge';
-        key = challenge.id;
-      } else {
-        mode = 'general';
-        key = GENERAL_CONVERSATION_ID;
-      }
-      input.value = '';
-      input.style.height = '';
-      hideError();
-      render();
-    },
+    syncSelection,
     switchMode,
     focus() { if (!input.disabled) input.focus(); },
     setMode(next) { aiMode = next; render(); },
+    /** Compatibilità con il vecchio singolo ID: sostituisce la selezione. */
+    selectChallenge(next) {
+      const id = typeof next === 'string' ? next : next?.id;
+      store.selectChallenge(id || null);
+      syncSelection();
+      switchMode(id ? 'challenge' : 'general');
+    },
+    get selectedChallenges() { return [...selections]; },
     get isBusy() { return Boolean(active && active.key === key); },
     get conversationKey() { return key; },
   };

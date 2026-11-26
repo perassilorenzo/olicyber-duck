@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "kind": "teaching-knowledge-base",
+  "source": "Sintesi didattica originale OliDuck",
+  "status": "active",
+  "note": "Definizioni generali scritte per questo progetto. Nessun testo di challenge, hint, flag, soluzione, documento di risoluzione, codice offensivo o allegato.",
+  "policy": {
+    "containsChallengeDescriptions": false,
+    "containsStatements": false,
+    "containsHints": false,
+    "containsFlags": false,
+    "containsSolutions": false,
+    "containsWriteups": false,
+    "containsPayloads": false,
+    "containsAttachments": false,
+    "derivedFromChallengeExport": false
+  },
+  "documents": 20,
+  "chunks": 20,
+  "items": [
+    {
+      "id": "concept-encoding",
+      "title": "Codifica dei dati",
+      "category": "Misc",
+      "tags": ["encoding", "base64", "ascii", "utf-8", "rappresentazione"],
+      "text": "La codifica converte dati da una rappresentazione a un'altra senza modificarne il significato. ASCII e UTF-8 sono modi per rappresentare caratteri come numeri; Base64 rappresenta dati binari con caratteri testuali. Una codifica non è una misura di sicurezza: non nasconde informazioni e non richiede una chiave. La distinzione tra codifica, compressione e cifratura è fondamentale per interpretare correttamente un messaggio."
+    },
+    {
+      "id": "concept-hash",
+      "title": "Funzione hash",
+      "category": "Crypto",
+      "tags": ["hash", "digest", "collisioni", "integrita"],
+      "text": "Una funzione hash trasforma dati di lunghezza arbitraria in un valore di lunghezza fissa chiamato digest. È deterministica: lo stesso input produce sempre lo stesso output. Le funzioni crittografiche sono progettate per essere resistenti alle collisioni e per non consentire di ricostruire l'input dal digest. Vengono usate per verificare l'integrità dei dati e come componente di altri meccanismi, non per nascondere un segreto."
+    },
+    {
+      "id": "concept-symmetric",
+      "title": "Crittografia simmetrica",
+      "category": "Crypto",
+      "tags": ["cifratura", "chiave", "simmetrica", "confidenzialita"],
+      "text": "Nella crittografia simmetrica la stessa chiave serve sia per cifrare sia per decifrare. La sicurezza dipende dalla segretezza della chiave e dal modo in cui la chiave viene gestita, non dall'algoritmo tenuto segreto. Il testo cifrato dovrebbe apparire privo di struttura riconoscibile. Concetti correlati sono le modalità di operazione, vettore di inizializzazione e autenticazione dei dati cifrati."
+    },
+    {
+      "id": "concept-asymmetric",
+      "title": "Crittografia asimmetrica",
+      "category": "Crypto",
+      "tags": ["chiave pubblica", "chiave privata", "firma", "RSA"],
+      "text": "La crittografia asimmetrica usa una coppia di chiavi: una pubblica e una privata. Ciò che viene cifrato con la chiave pubblica può essere decifrato solo con la privata; la firma digitale usa il processo inverso per dimostrare l'origine di un messaggio. È alla base di protocolli di scambio di chiavi e di certificati. La lunghezza delle chiavi e la gestione della fiducia sono parte del modello di sicurezza."
+    },
+    {
+      "id": "concept-http",
+      "title": "Protocollo HTTP",
+      "category": "Web",
+      "tags": ["http", "https", "metodi", "header", "status"],
+      "text": "HTTP è un protocollo request-response: un client invia una richiesta con metodo, percorso, intestazioni e corpo; un server risponde con un codice di stato, intestazioni e corpo. HTTPS aggiunge una sessione cifrata e l'autenticazione del server tramite TLS. Le intestazioni descrivono metadati della transazione, come tipo di contenuto, cache e negoziazione. I codici di stato indicano se la richiesta è riuscita o perché non è stata soddisfatta."
+    },
+    {
+      "id": "concept-cookie",
+      "title": "Cookie e sessioni",
+      "category": "Web",
+      "tags": ["cookie", "sessione", "autenticazione", "attributi"],
+      "text": "Un cookie è un piccolo dato che il server invia al browser e che il browser rimanda nelle richieste successive. Serve a mantenere stato in un protocollo senza stato come HTTP. Le sessioni sono registrate server-side e spesso identificate da un cookie opaco. Gli attributi HttpOnly, Secure e SameSite limitano la portata di un cookie. La gestione della scadenza e della rotazione degli identificatori è parte della progettazione dell'autenticazione."
+    },
+    {
+      "id": "concept-url-encoding",
+      "title": "URL e codifica percentuale",
+      "category": "Web",
+      "tags": ["url", "query", "parametri", "percent-encoding"],
+      "text": "Un URL identifica una risorsa e può contenere un percorso, parametri di query e un frammento. I parametri di query sono coppie chiave-valore separate da delimitatori. La codifica percentuale rappresenta caratteri non ammessi o ambigui con il formato percentuale UTF-8. Interpretare correttamente la differenza tra valore letterale e valore decodificato è importante per capire come un server riceve i dati."
+    },
+    {
+      "id": "concept-binary",
+      "title": "Dati binari e byte",
+      "category": "Binary",
+      "tags": ["byte", "binario", "esadecimale", "ascii"],
+      "text": "Un byte è un gruppo di otto bit e può rappresentare un numero da 0 a 255. La notazione esadecimale è un modo compatto per scrivere sequenze di byte. La stessa sequenza può assumere significati diversi a seconda che venga interpretata come testo, numero o struttura dati. Per questo la rappresentazione dei dati e la codifica dei caratteri sono concetti distinti."
+    },
+    {
+      "id": "concept-endian",
+      "title": "Ordine dei byte",
+      "category": "Binary",
+      "tags": ["endian", "little endian", "big endian", "formati"],
+      "text": "L'ordine dei byte, o endianness, descrive come un numero multi-byte viene scritto in memoria o in un file. In little endian il byte meno significativo viene prima; in big endian viene prima quello più significativo. I formati di file e i protocolli di rete definiscono l'ordine atteso. Un errore di interpretazione produce valori diversi pur leggendo gli stessi byte."
+    },
+    {
+      "id": "concept-tcpip",
+      "title": "Modello TCP/IP e porte",
+      "category": "Network",
+      "tags": ["tcp", "udp", "ip", "porte", "protocolli"],
+      "text": "TCP offre un flusso ordinato e affidabile tra due endpoint; UDP offre datagrammi senza garanzia di consegna. Indirizzi IP e porte identificano rispettivamente un host e un servizio su quell'host. Incapsulamento significa che ogni livello aggiunge le proprie intestazioni ai dati del livello superiore. Comprendere il modello a livelli aiuta a separare indirizzamento, trasporto e applicazione."
+    },
+    {
+      "id": "concept-dns",
+      "title": "Risoluzione dei nomi DNS",
+      "category": "Network",
+      "tags": ["dns", "dominio", "record", "risoluzione"],
+      "text": "Il DNS traduce nomi di dominio in indirizzi IP e conserva altri tipi di informazioni associati a un dominio. La risoluzione coinvolge più livelli di cache e server autoritativi. I record hanno tipi diversi, ciascuno con uno scopo specifico. Una risposta DNS è un dato fornito dal servizio di risoluzione e va distinta dalla configurazione locale del dispositivo."
+    },
+    {
+      "id": "concept-traffic",
+      "title": "Analisi del traffico di rete",
+      "category": "Network",
+      "tags": ["pcap", "pacchetti", "sniffing", "cattura"],
+      "text": "Una cattura di rete registra i pacchetti osservati su un'interfaccia. Ogni pacchetto contiene intestazioni di livello e un contenuto dati, che può essere cifrato o in chiaro a seconda del protocollo. Leggere una cattura significa ricostruere conversazioni a partire da stream e da metadati temporali. La disponibilità dei dati dipende da dove la cattura è stata effettuata e da quali protocolli sono stati usati."
+    },
+    {
+      "id": "concept-memory",
+      "title": "Memoria di un processo",
+      "category": "Pwn",
+      "tags": ["processo", "memoria", "stack", "heap"],
+      "text": "Un processo ha uno spazio di indirizzamento virtuale con regioni distinte, tra cui codice, dati, stack e heap. Lo stack cresce e si riduce con le chiamate di funzione; l'heap è usato per allocazioni dinamiche. I meccanismi di protezione moderni limitano l'esecuzione di alcune regioni e casualizzano gli indirizzi. Il modello di memoria è un concetto teorico, indipendente da qualsiasi tecnica di sfruttamento."
+    },
+    {
+      "id": "concept-vulnerability",
+      "title": "Classi di vulnerabilità",
+      "category": "Pwn",
+      "tags": ["vulnerabilita", "input", "validazione", "sicurezza"],
+      "text": "Una vulnerabilità è una debolezza che può portare a un comportamento non inteso dal progettista. Classi comuni riguardano la validazione dell'input, la gestione della memoria, i controlli di accesso e la configurazione. La severità dipende dal contesto in cui la debolezza si trova e dalle difese presenti. Studiare la classe di un problema aiuta a ragionare in termini di modello di sicurezza, non di procedure operative."
+    },
+    {
+      "id": "concept-osint",
+      "title": "OSINT e fonti pubbliche",
+      "category": "OSINT",
+      "tags": ["osint", "fonti pubbliche", "verifica", "provenienza"],
+      "text": "OSINT indica l'attività di raccolta e analisi di informazioni da fonti pubbliche. La qualità di una fonte dipende dalla sua provenienza, dalla data e dalla possibilità di verificarla con fonti indipendenti. Metadati e indizi contestuali possono essere fuorvianti se letti senza contesto. La distinzione tra informazione verificata e deduzione è parte del metodo di analisi."
+    },
+    {
+      "id": "concept-reverse",
+      "title": "Analisi statica e dinamica",
+      "category": "Reverse",
+      "tags": ["reverse", "disassembly", "binario", "debug"],
+      "text": "L'analisi statica esamina un artefatto senza eseguirlo, ad esempio leggendo la struttura di un file o le istruzioni disassemblate. L'analisi dinamica osserva il comportamento durante l'esecuzione in un ambiente controllato. Le due prospettive sono complementari: la prima mostra cosa è presente, la seconda cosa accade. Simboli e informazioni di debug possono essere assenti, quindi parte dell'analisi è ricostruire il contesto."
+    },
+    {
+      "id": "concept-forensics",
+      "title": "Forensica digitale",
+      "category": "Forensics",
+      "tags": ["forensica", "evidenze", "metadati", "catena di custodia"],
+      "text": "La forensica digitale si occupa di acquisire, preservare e interpretare evidenze informatiche. La catena di custodia documenta come un artefatto è stato raccolto e conservato. Metadati, timestamp e residui di filesystem sono indizi che vanno interpretati con cautela, perché possono essere alterati. La ripetibilità dell'analisi e la distinzione tra osservazione e ipotesi sono principi fondamentali."
+    },
+    {
+      "id": "concept-regex",
+      "title": "Espressioni regolari",
+      "category": "Misc",
+      "tags": ["regex", "pattern", "testo", "ricerca"],
+      "text": "Un'espressione regolare descrive un insieme di stringhe tramite un pattern. È uno strumento per cercare, validare o suddividere testo. I quantificatori, le classi di caratteri e i gruppi definiscono la struttura del pattern. La semantica può variare leggermente tra motori diversi, quindi il contesto di utilizzo è rilevante per interpretare un risultato."
+    },
+    {
+      "id": "concept-stego",
+      "title": "Steganografia",
+      "category": "Forensics",
+      "tags": ["steganografia", "media", "metadati", "nascondere"],
+      "text": "La steganografia cerca di nascondere l'esistenza stessa di un messaggio all'interno di un altro contenuto, come un'immagine o un file audio. Si distingue dalla cifratura, che rende illeggibile un messaggio senza nasconderne la presenza. La capacità di un supporto e le modifiche introdotte sono limiti importanti. L'assenza di un segnale evidente non dimostra che un contenuto non trasporti dati nascosti."
+    },
+    {
+      "id": "concept-terminology",
+      "title": "Terminologia di sicurezza",
+      "category": "Cybersecurity",
+      "tags": ["minaccia", "difesa", "superficie d attacco", "principio del minimo privilegio"],
+      "text": "Una minaccia è un evento potenzialmente dannoso; una vulnerabilità è una debolezza; un attacco è l'azione che sfrutta una debolezza. La superficie d'attacco è l'insieme dei punti attraverso cui un sistema può ricevere input. Il principio del minimo privilegio limita i permessi al solo necessario. Difesa in profondità significa combinare più livelli di controllo invece di affidarsi a una sola barriera."
+    }
+  ]
+}
