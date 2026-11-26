@@ -5,6 +5,8 @@ export const MAX_MESSAGE_CHARS = 4_000;
 export const MAX_HISTORY_MESSAGES = 12;
 export const MAX_HISTORY_CHARS = 8_000;
 export const MAX_CONTEXT_CHALLENGES = 6;
+/** Estratto incollato dallo studente: non è una fonte verificata. */
+export const MAX_STATEMENT_CHARS = 2000;
 export const ALLOWED_ROLES = new Set(['user', 'assistant']);
 export const GENERAL_CHALLENGE_ID = 'general';
 
@@ -17,9 +19,36 @@ function clean(value, maxChars) {
 }
 
 /**
+ * L'estratto della consegna è input non attendibile: può contenere flag o
+ * istruzioni. Viene limitato, ripulito dai caratteri di controllo e privato dei
+ * flag evidenti prima di entrare nel contesto del modello. Non viene mai
+ * confrontato con il catalogo né salvato come fonte verificata.
+ */
+function cleanStatementExcerpt(value) {
+  let text = clean(value, MAX_STATEMENT_CHARS);
+  // Le interruzioni di riga sono parte della consegna: vengono conservate,
+  // mentre gli spazi orizzontali e i caratteri di controllo vengono normalizzati.
+  text = text.replace(/\r\n?/g, '\n')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
+    .replace(/[^\S\n]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  text = text
+    .replace(/\b(?:flag|olicyber|ctf|ITASEC|OBUDMW|ptm|cnvlbd|cixd|xcqv|fzau|synt|cyvz)\s*[{\[][^\]}]{0,240}[\]}]/gis, '[TESTO RIMOSSO]')
+    .replace(/\b[A-Za-z][A-Za-z0-9_]*\s*\{\s*[A-Za-z0-9]{8,}[!?]?\s*\}/gi, '[TESTO RIMOSSO]')
+    .replace(/\bflag\s*[:=]\s*[^\s`"']{6,}/gi, '[TESTO RIMOSSO]')
+    // Flag troncata dal limite di lunghezza: senza parentesi di chiusura il
+    // prefisso non deve comunque raggiungere il modello.
+    .replace(/\bflag\s*[{\[]\s*[^\s}\]]{0,240}/gi, '[TESTO RIMOSSO]');
+  return text.slice(0, MAX_STATEMENT_CHARS);
+}
+
+/**
  * Il contesto delle challenge NON è accettato dal client: vengono accettati
  * solo ID, che il server risolve nel catalogo authoritative. Qualsiasi campo
- * `challenge` inviato dal browser viene ignorato.
+ * `challenge` inviato dal browser viene ignorato. L'eventuale `statementExcerpt`
+ * è un estratto incollato dallo studente: trattato come dato non attendibile e
+ * ripulito, mai come fonte verificata.
  *
  * @returns {{ok: true, value: object} | {ok: false, error: string}}
  */
@@ -85,5 +114,13 @@ export function parseChatRequest(rawBody) {
     history.push({ role: item.role, content });
   }
 
-  return { ok: true, value: { message, challengeIds, history } };
+  return {
+    ok: true,
+    value: {
+      message,
+      challengeIds,
+      history,
+      statementExcerpt: cleanStatementExcerpt(body.statementExcerpt),
+    },
+  };
 }

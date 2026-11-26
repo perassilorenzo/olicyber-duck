@@ -26,25 +26,27 @@ Il modello predefinito, centralizzato in `functions/lib/model.js`, è:
 
 Il binding `AI` è sufficiente: **non inserire token o API key nel repository**. Workers AI usa le credenziali dell'account autenticato. Il frontend non riceve credenziali: chiama solo `/api/chat`.
 
-In `wrangler.toml` il binding resta **commentato di default** e non viene attivato automaticamente:
+In `wrangler.toml` il binding è **dichiarato e attivo** nel repository:
 
 ```toml
-# [ai]
-# binding = "AI"
+[ai]
+binding = "AI"
 
 # [vars]
 # Modello predefinito: @cf/zai-org/glm-4.7-flash (functions/lib/model.js).
 # AI_MODEL = "@cf/zai-org/glm-4.7-flash"
 ```
 
+Questa dichiarazione non sostituisce la configurazione del progetto Pages distribuito: per l'ambiente remoto il binding va verificato/aggiunto nella dashboard e il progetto va ridistribuito. Non è stato fatto.
+
 `AI_MODEL` è un override server-side facoltativo: se non è impostato, handler e `/api/status` usano il modello predefinito. Per usare un modello diverso, verificare che sia disponibile nel proprio account prima di impostare `AI_MODEL`. Con Wrangler 4 è possibile usare un file `.dev.vars` per variabili locali; è già escluso da Git tramite `.gitignore`.
 
 ### Stato del binding verificato in questa attività
 
-- `wrangler.toml` contiene `[ai]` e `binding = "AI"` **commentati**.
-- `GET /api/status` in locale ha restituito `mode: "demo"`, `model: null` e `streaming: false`.
-- Non esiste accesso alla dashboard Cloudflare in questa sessione: il binding **non è stato attivato** e non è stato eseguito alcun deploy.
-- Non è quindi stato possibile verificare il modello reale, lo streaming remoto o la quota effettiva dell'account: la verifica locale usa mock SSE con lo stesso formato documentato da Cloudflare.
+- `wrangler.toml` contiene `[ai]` e `binding = "AI"` **attivi** (il blocco è già presente in `HEAD`, non è una modifica di questa sessione).
+- Non esiste accesso alla dashboard Cloudflare in questa sessione: il binding remoto **non è stato verificato** e non è stato eseguito alcun deploy.
+- I test automatici usano ambienti senza `env.AI`, quindi esercitano la modalità DEMO e mock SSE con lo stesso formato documentato da Cloudflare.
+- Non è stato possibile verificare il modello reale, lo streaming remoto o la quota effettiva dell'account.
 
 ### Passaggi esatti in Dashboard (non eseguiti in questa attività)
 
@@ -59,7 +61,7 @@ Secondo la [documentazione Pages per i binding](https://developers.cloudflare.co
 
 Non incollare token o API key: non servono. `AI_MODEL` va impostato solo in **Settings → Variables and Secrets** se si vuole sovrascrivere il modello; non è richiesto per il default. Il deploy non è stato eseguito e va fatto solo su autorizzazione esplicita.
 
-Per il solo sviluppo locale è possibile esporre il binding con `npm run dev -- --port 8788 --ai=AI` oppure decommentando `[ai]` in `wrangler.toml`. La documentazione Cloudflare segnala che **l'uso di Workers AI in locale consuma comunque quota e può generare costi**: non è stato fatto in questa attività.
+Poiché `[ai]` è già attivo in `wrangler.toml`, `npm run dev` può rendere disponibile il binding anche in locale, a seconda dell'account autenticato. La documentazione Cloudflare segnala che **Workers AI è sempre remoto e consuma quota anche in sviluppo locale**: non avviare il modello reale senza voler usare la quota. `--ai=AI` è un'alternativa esplicita, non necessaria con il blocco attivo. Nessuna chiamata reale al modello è stata eseguita in questa attività.
 
 ## 3. Deploy
 
@@ -93,7 +95,7 @@ Per questo i ponti CJS per i dati (`functions/lib/catalog-data.cjs`, `functions/
 curl -s http://localhost:8788/api/status
 ```
 
-Senza binding, lo stato include `mode: "demo"`, `model: null`, `streaming: false` e una nota che segnala la modalità DEMO. Con il binding e dopo la ri-distribuzione, lo stato segnala `mode: "ai"`, `model: "@cf/zai-org/glm-4.7-flash"` (salvo override) e `streaming: true`.
+In un ambiente senza `env.AI`, lo stato include `mode: "demo"`, `model: null`, `streaming: false` e una nota che segnala la modalità DEMO. Con il binding effettivo, lo stato segnala `mode: "ai"`, `model: "@cf/zai-org/glm-4.7-flash"` (salvo override) e `streaming: true`; la sezione `knowledge` riporta 20 documenti, 20 chunk e `reviewedAt`.
 
 Test chat contestuale:
 
@@ -120,9 +122,9 @@ curl -N -X POST http://localhost:8788/api/chat \
   -d '{"challengeIds":["olicyber-1"],"message":"Spiegami una funzione hash","history":[]}'
 ```
 
-Ogni evento contiene `reply` cumulativo; l'ultimo evento include anche `mode`, `model`, `challengeIds`, `challengeId` e `sources`. In caso di rifiuto l'ultimo evento ha `blocked: true`, in caso di errore `error` e `status`.
+Ogni evento contiene `reply` cumulativo; l'ultimo evento include anche `mode`, `model`, `challengeIds`, `challengeId`, `intent`, `statementProvided` e `sources`. In caso di rifiuto l'ultimo evento ha `blocked: true`, in caso di chiarimento `needsClarification: true` senza `blocked`, in caso di errore `error` e `status`.
 
-Il client invia solo `challengeIds` (massimo 6) e non il contenuto delle challenge: il server ricostruisce il contesto autorevole dal catalogo e usa solo la KB didattica. Il campo `challenge`, se inviato, non è accettato come fonte e viene ignorato. Le richieste di flag, soluzioni, writeup o payload vengono rifiutate deterministicamente prima della chiamata al modello. Per la procedura completa di verifica nel browser vedere [`AI-ARCHITECTURE.md`](AI-ARCHITECTURE.md#6-verifica-manuale-in-browser).
+Il client invia solo `challengeIds` (massimo 6) e, facoltativamente, `statementExcerpt`: non invia il contenuto delle challenge. Il server ricostruisce il contesto autorevole dal catalogo e usa solo la KB didattica. Il campo `challenge`, se inviato, viene ignorato. Solo le richieste esplicite di flag, soluzioni, writeup o payload vengono rifiutate prima della chiamata al modello; le domande teoriche restano ammesse e i casi ambigui ricevono una richiesta di chiarimento. Per la procedura completa di verifica nel browser vedere [`AI-ARCHITECTURE.md`](AI-ARCHITECTURE.md#6-verifica-manuale-in-browser).
 
 ## 5. Anti-abuso, limiti e produzione
 

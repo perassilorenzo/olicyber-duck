@@ -16,8 +16,10 @@ export const MIN_PANEL_WIDTH = 22;
 export const MAX_PANEL_WIDTH = 72;
 export const MAX_SELECTED_CHALLENGES = 6;
 export const SELECTED_CHALLENGE_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
+export const CHAT_CONVERSATION_PREFIX = 'chat:';
 
 const MAX_MESSAGES_PER_CHALLENGE = 100;
+const MAX_TITLE_CHARS = 120;
 
 /** ID validi, deduplicati e in ordine di inclusione (max 6). */
 export function normalizeSelectedIds(value) {
@@ -38,11 +40,17 @@ export function defaultState() {
     version: SCHEMA_VERSION,
     statuses: {},
     conversations: {},
+    // Metadati opzionali: chiavi di conversazione, titoli e riferimenti challenge.
+    // Lo schema resta v2: i dati storici senza questi campi continuano a funzionare.
+    conversationMeta: {},
+    activeConversation: GENERAL_CONVERSATION_ID,
+    favorites: [],
     selectedChallengeIds: [],
     preferences: {
       theme: 'light',
       panelWidth: DEFAULT_PANEL_WIDTH,
       activePanel: 'assistant',
+      assistantCollapsed: false,
       filters: {
         query: '', category: 'all', difficulty: 'all', edition: 'all',
         path: 'all', tag: 'all', status: 'all', sort: 'catalog',
@@ -90,6 +98,42 @@ function normalizeMessage(message) {
   };
 }
 
+/** Titolo leggibile derivato dal primo messaggio: nessun contenuto inventato. */
+function titleFromContent(content) {
+  const text = String(content || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const short = text.slice(0, MAX_TITLE_CHARS).trim();
+  return short.length < text.length ? `${short}…` : short;
+}
+
+/** Le vecchie chiavi `ctx:` restano valide anche senza metadati salvati. */
+function challengeIdsFromKey(key) {
+  return typeof key === 'string' && key.startsWith('ctx:')
+    ? key.slice(4).split('|').filter((id) => SELECTED_CHALLENGE_ID_PATTERN.test(id))
+    : [];
+}
+
+function normalizeConversationMeta(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const title = typeof raw.title === 'string' ? raw.title.trim().slice(0, MAX_TITLE_CHARS) : '';
+  const challengeIds = normalizeSelectedIds(raw.challengeIds);
+  const createdAt = typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString();
+  const updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : createdAt;
+  // Estratto incollato dallo studente: testo NON verificato, mai una fonte
+  // autorevole. Viene conservato solo per i follow-up della stessa chat.
+  const statementExcerpt = typeof raw.statementExcerpt === 'string'
+    ? raw.statementExcerpt.slice(0, 2000)
+    : '';
+  return {
+    title,
+    challengeIds,
+    kind: challengeIds.length ? 'challenge' : 'general',
+    createdAt,
+    updatedAt,
+    statementExcerpt,
+  };
+}
+
 export function normalizeState(raw) {
   const base = defaultState();
   if (!raw || typeof raw !== 'object') return base;
@@ -102,14 +146,36 @@ export function normalizeState(raw) {
     }
   }
 
+  const conversationMeta = {};
+  if (state.conversationMeta && typeof state.conversationMeta === 'object') {
+    for (const [id, meta] of Object.entries(state.conversationMeta)) {
+      const clean = normalizeConversationMeta(meta);
+      if (clean) conversationMeta[id] = clean;
+    }
+  }
+
   const conversations = {};
   if (state.conversations && typeof state.conversations === 'object') {
     for (const [id, list] of Object.entries(state.conversations)) {
       if (!Array.isArray(list) || typeof id !== 'string') continue;
       const messages = list.map(normalizeMessage).filter(Boolean).slice(-MAX_MESSAGES_PER_CHALLENGE);
-      if (messages.length) conversations[id] = messages;
+      // Una chat appena creata è vuota ma deve restare nella cronologia.
+      if (messages.length || conversationMeta[id]) conversations[id] = messages;
     }
   }
+  // Metadati senza messaggi (per esempio dopo una cancellazione selettiva) non
+  // devono generare voci fantasma.
+  for (const id of Object.keys(conversationMeta)) {
+    if (!conversations[id]) delete conversationMeta[id];
+  }
+
+  const favorites = Array.isArray(state.favorites)
+    ? state.favorites.filter((id) => typeof id === 'string' && SELECTED_CHALLENGE_ID_PATTERN.test(id))
+    : [];
+  const activeConversation = typeof state.activeConversation === 'string'
+    && (conversations[state.activeConversation] || state.activeConversation === GENERAL_CONVERSATION_ID)
+    ? state.activeConversation
+    : GENERAL_CONVERSATION_ID;
 
   const prefs = state.preferences && typeof state.preferences === 'object' ? state.preferences : {};
   const filters = prefs.filters && typeof prefs.filters === 'object' ? prefs.filters : {};
@@ -120,6 +186,9 @@ export function normalizeState(raw) {
     version: SCHEMA_VERSION,
     statuses,
     conversations,
+    conversationMeta,
+    activeConversation,
+    favorites: [...new Set(favorites)].slice(0, MAX_SELECTED_CHALLENGES * 4),
     // Uno stato v2 storico può avere solo `selectedChallengeId`: diventa un array di uno.
     selectedChallengeIds: normalizeSelectedIds(state.selectedChallengeIds ?? state.selectedChallengeId),
     preferences: {
@@ -128,6 +197,7 @@ export function normalizeState(raw) {
         ? Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, Math.round(width)))
         : DEFAULT_PANEL_WIDTH,
       activePanel: prefs.activePanel === 'library' ? 'library' : 'assistant',
+      assistantCollapsed: prefs.assistantCollapsed === true,
       filters: {
         query: typeof filters.query === 'string' ? filters.query.slice(0, 200) : '',
         category: typeof filters.category === 'string' ? filters.category : 'all',
@@ -211,20 +281,147 @@ export class LocalStore {
   getConversation(id) { return [...(this.state.conversations[id] || [])]; }
 
   appendMessage(id, message) {
+    const clean = normalizeMessage(message);
+    if (!clean) return;
     this.update((draft) => {
       const list = draft.conversations[id] || [];
-      const clean = normalizeMessage(message);
-      if (clean) list.push(clean);
+      list.push(clean);
       draft.conversations[id] = list.slice(-MAX_MESSAGES_PER_CHALLENGE);
+      const meta = draft.conversationMeta[id]
+        || normalizeConversationMeta({ challengeIds: challengeIdsFromKey(id) });
+      meta.updatedAt = clean.createdAt;
+      if (!meta.title && clean.role === 'user') {
+        meta.title = titleFromContent(clean.content);
+      }
+      draft.conversationMeta[id] = meta;
     });
   }
 
+  /** Metadati completi: quelli salvati, con fallback per le chiavi storiche. */
+  getConversationMeta(id) {
+    const key = typeof id === 'string' ? id : GENERAL_CONVERSATION_ID;
+    const messages = this.state.conversations[key] || [];
+    const stored = this.state.conversationMeta[key] || {};
+    const challengeIds = stored.challengeIds || challengeIdsFromKey(key);
+    const firstUser = messages.find((item) => item.role === 'user');
+    return {
+      id: key,
+      title: stored.title || titleFromContent(firstUser?.content) || (key === GENERAL_CONVERSATION_ID ? 'Chat generale' : 'Nuova chat'),
+      challengeIds: [...challengeIds],
+      kind: challengeIds.length ? 'challenge' : 'general',
+      createdAt: stored.createdAt || firstUser?.createdAt || null,
+      updatedAt: stored.updatedAt || messages.at(-1)?.createdAt || null,
+      statementExcerpt: stored.statementExcerpt || '',
+      messageCount: messages.length,
+    };
+  }
+
+  listConversations() {
+    const ids = new Set([
+      ...Object.keys(this.state.conversations),
+      ...Object.keys(this.state.conversationMeta),
+      GENERAL_CONVERSATION_ID,
+    ]);
+    return [...ids]
+      .map((id) => this.getConversationMeta(id))
+      .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
+  }
+
+  /** Crea una conversazione vuota e la imposta come attiva. */
+  createConversation({ title = 'Nuova chat', challengeIds = [] } = {}) {
+    const random = globalThis.crypto?.randomUUID?.()
+      || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const id = `${CHAT_CONVERSATION_PREFIX}${random}`;
+    const now = new Date().toISOString();
+    this.update((draft) => {
+      draft.conversations[id] = [];
+      const clean = normalizeConversationMeta({ title, challengeIds, createdAt: now, updatedAt: now });
+      draft.conversationMeta[id] = clean;
+      draft.activeConversation = id;
+    });
+    return id;
+  }
+
+  setConversationMeta(id, patch = {}) {
+    if (typeof id !== 'string' || !id) return;
+    this.update((draft) => {
+      const current = draft.conversationMeta[id]
+        || normalizeConversationMeta({ challengeIds: challengeIdsFromKey(id) });
+      draft.conversationMeta[id] = normalizeConversationMeta({ ...current, ...patch });
+    });
+  }
+
+  renameConversation(id, title) {
+    const clean = typeof title === 'string' ? title.trim().slice(0, MAX_TITLE_CHARS) : '';
+    if (!clean) return false;
+    this.setConversationMeta(id, { title: clean });
+    return true;
+  }
+
+  truncateConversation(id, length) {
+    if (typeof id !== 'string') return;
+    this.update((draft) => {
+      const list = draft.conversations[id] || [];
+      draft.conversations[id] = list.slice(0, Math.max(0, Math.min(Number(length) || 0, list.length)));
+    });
+  }
+
+  deleteConversation(id) {
+    if (typeof id !== 'string') return;
+    this.update((draft) => {
+      delete draft.conversations[id];
+      delete draft.conversationMeta[id];
+      if (draft.activeConversation === id) {
+        const remaining = Object.keys(draft.conversations);
+        draft.activeConversation = remaining.length ? remaining[0] : GENERAL_CONVERSATION_ID;
+      }
+    });
+  }
+
+  setActiveConversation(id) {
+    if (typeof id !== 'string') return;
+    if (id !== GENERAL_CONVERSATION_ID && !this.state.conversations[id]) return;
+    if (this.state.activeConversation === id) return;
+    this.update((draft) => { draft.activeConversation = id; });
+  }
+
+  getActiveConversation() {
+    return this.state.activeConversation || GENERAL_CONVERSATION_ID;
+  }
+
+  isFavorite(id) {
+    return typeof id === 'string' && this.state.favorites.includes(id);
+  }
+
+  toggleFavorite(id) {
+    if (typeof id !== 'string' || !SELECTED_CHALLENGE_ID_PATTERN.test(id)) return false;
+    let favorite = false;
+    this.update((draft) => {
+      const index = draft.favorites.indexOf(id);
+      if (index === -1) {
+        draft.favorites.push(id);
+        favorite = true;
+      } else {
+        draft.favorites.splice(index, 1);
+      }
+    });
+    return favorite;
+  }
+
   clearConversation(id) {
-    this.update((draft) => { delete draft.conversations[id]; });
+    this.update((draft) => {
+      delete draft.conversations[id];
+      delete draft.conversationMeta[id];
+      if (draft.activeConversation === id) draft.activeConversation = GENERAL_CONVERSATION_ID;
+    });
   }
 
   clearConversations() {
-    this.update((draft) => { draft.conversations = {}; });
+    this.update((draft) => {
+      draft.conversations = {};
+      draft.conversationMeta = {};
+      draft.activeConversation = GENERAL_CONVERSATION_ID;
+    });
   }
 
   clearAll() {

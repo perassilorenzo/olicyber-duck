@@ -2,7 +2,9 @@
  * Client del backend AI. Il contesto delle challenge NON viene inviato:
  * il server lo ricostruisce in modo autorevole da `challengeIds` leggendo il
  * catalogo authoritative. Il client invia solo ID (massimo 6), messaggio e
- * cronologia: descrizioni, hint e allegati restano fuori dal payload.
+ * cronologia: descrizioni, hint e allegati restano fuori dal payload. L'eventuale
+ * `statementExcerpt` è un estratto incollato dallo studente, non una fonte
+ * verificata: il server lo limita e lo tratta come dato non attendibile.
  *
  * `onProgress` (o il suo alias storico `onToken`) riceve sempre la risposta
  * CUMULATIVA, non il delta del singolo token, sia con JSON sia con SSE.
@@ -63,6 +65,17 @@ async function readEventStream(response, onProgress) {
         if (event.challengeId) result.challengeId = event.challengeId;
         if (Array.isArray(event.sources)) result.sources = event.sources;
         if (typeof event.blocked === 'boolean') result.blocked = event.blocked;
+        if (typeof event.intent === 'string') result.intent = event.intent;
+        if (typeof event.needsClarification === 'boolean') result.needsClarification = event.needsClarification;
+        if (typeof event.statementProvided === 'boolean') result.statementProvided = event.statementProvided;
+        if (typeof event.statementStatus === 'string') result.statementStatus = event.statementStatus;
+        if (typeof event.catalogVerified === 'boolean') result.catalogVerified = event.catalogVerified;
+        if (typeof event.contextMode === 'string') result.contextMode = event.contextMode;
+        if (typeof event.challengeCount === 'number') result.challengeCount = event.challengeCount;
+        if (typeof event.statementMissing === 'boolean') result.statementMissing = event.statementMissing;
+        if (typeof event.personalContext === 'boolean') result.personalContext = event.personalContext;
+        if (typeof event.support === 'boolean') result.support = event.support;
+        if (typeof event.hintStage === 'number') result.hintStage = event.hintStage;
         if (event.error) throw new ApiError(event.error, Number(event.status) || response.status);
       } catch (error) {
         if (error instanceof ApiError) throw error;
@@ -72,13 +85,15 @@ async function readEventStream(response, onProgress) {
   return { ...result, reply };
 }
 
-export async function sendChat({ challengeIds, message, history }, { onProgress, onToken, signal } = {}) {
+export async function sendChat({ challengeIds, message, history, statementExcerpt = '' }, { onProgress, onToken, signal } = {}) {
   const report = onProgress || onToken;
+  const payload = { challengeIds, message, history };
+  if (statementExcerpt) payload.statementExcerpt = statementExcerpt;
   const response = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
     signal,
-    body: JSON.stringify({ challengeIds, message, history }),
+    body: JSON.stringify(payload),
   });
   if (!response.ok) throw await readError(response);
 
@@ -96,5 +111,16 @@ export async function sendChat({ challengeIds, message, history }, { onProgress,
     challengeId: data.challengeId,
     sources: Array.isArray(data.sources) ? data.sources : [],
     blocked: Boolean(data.blocked),
+    intent: typeof data.intent === 'string' ? data.intent : null,
+    needsClarification: Boolean(data.needsClarification),
+    statementProvided: Boolean(data.statementProvided),
+    statementStatus: typeof data.statementStatus === 'string' ? data.statementStatus : null,
+    catalogVerified: Boolean(data.catalogVerified),
+    contextMode: typeof data.contextMode === 'string' ? data.contextMode : null,
+    challengeCount: typeof data.challengeCount === 'number' ? data.challengeCount : null,
+    statementMissing: Boolean(data.statementMissing),
+    personalContext: Boolean(data.personalContext),
+    support: Boolean(data.support),
+    hintStage: typeof data.hintStage === 'number' ? data.hintStage : null,
   };
 }

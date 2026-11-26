@@ -30,6 +30,7 @@ export async function onRequestGet({ env }) {
       status: KNOWLEDGE_META.status,
       documents: KNOWLEDGE_META.documents,
       chunks: KNOWLEDGE_META.chunks,
+      reviewedAt: KNOWLEDGE_META.reviewedAt,
       policy: KNOWLEDGE_META.policy,
     },
     // Chiave storica: ora descrive la knowledge base didattica, non i dati delle challenge.

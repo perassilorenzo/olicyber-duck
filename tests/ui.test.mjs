@@ -25,15 +25,23 @@ function sseResponse(tokens) {
   return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } });
 }
 
-test('la shell contiene esattamente due pannelli, splitter e drawer in overlay', () => {
+test('la shell ha tre aree, splitter, drawer e cronologia chat', () => {
   const dom = new JSDOM(html);
   const { document: doc } = dom.window;
   assert.equal(doc.querySelectorAll('main > .panel').length, 2);
+  assert.ok(doc.getElementById('history-sidebar'));
+  assert.ok(doc.getElementById('training-panel'));
   assert.ok(doc.getElementById('library-panel'));
   assert.ok(doc.getElementById('assistant-panel'));
   assert.equal(doc.getElementById('workspace-panel'), null);
   assert.ok(doc.getElementById('splitter'));
   assert.equal(doc.querySelectorAll('[data-panel-tab]').length, 2);
+  assert.equal(doc.querySelectorAll('[data-sidebar-view]').length, 3);
+  assert.ok(doc.getElementById('new-chat'));
+  assert.ok(doc.getElementById('chat-history-challenge'));
+  assert.ok(doc.getElementById('chat-history-general'));
+  assert.ok(doc.getElementById('toggle-assistant'));
+  assert.ok(doc.getElementById('toggle-history'));
   assert.ok(doc.getElementById('details-drawer'));
   assert.equal(doc.getElementById('details-drawer').getAttribute('role'), 'dialog');
   assert.ok(doc.getElementById('chat-input'));
@@ -298,11 +306,15 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
   doc.querySelector('#challenge-list .challenge-item[data-id="demo-crypto-01"] .challenge-item__chat').click();
   await wait();
   const savedMulti = () => JSON.parse(window.localStorage.getItem('oliduck:state')).selectedChallengeIds;
-  assert.deepEqual(savedMulti(), ['demo-web-01', 'demo-crypto-01']);
+  // La challenge richiesta esplicitamente diventa il contesto primario.
+  assert.deepEqual(savedMulti(), ['demo-crypto-01', 'demo-web-01']);
   assert.equal(doc.getElementById('mode-challenge').getAttribute('aria-checked'), 'true');
   let chips = [...doc.querySelectorAll('#assistant-context-chips .context-chip')];
-  assert.deepEqual(chips.map((chip) => chip.dataset.id), ['demo-web-01', 'demo-crypto-01']);
-  assert.equal(chips[0].querySelector('button').getAttribute('aria-label'), 'Rimuovi Il parametro dimenticato dal contesto');
+  assert.deepEqual(chips.map((chip) => chip.dataset.id), ['demo-crypto-01', 'demo-web-01']);
+  assert.equal(
+    doc.querySelector('#assistant-context-chips .context-chip[data-id="demo-web-01"] button').getAttribute('aria-label'),
+    'Rimuovi Il parametro dimenticato dal contesto',
+  );
   assert.match(doc.getElementById('assistant-context-label').textContent, /Il parametro dimenticato/);
   assert.match(doc.getElementById('assistant-context-label').textContent, /Il turno che si ripete/);
 
@@ -312,23 +324,23 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
   doc.getElementById('chat-input').value = 'Confronto le due challenge';
   doc.getElementById('chat-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
   await wait(80);
-  assert.deepEqual(payloads.at(-1).challengeIds, ['demo-web-01', 'demo-crypto-01']);
+  assert.deepEqual(payloads.at(-1).challengeIds, ['demo-crypto-01', 'demo-web-01']);
   assert.equal('challengeId' in payloads.at(-1), false);
   bubbles = [...doc.querySelectorAll('.chat-message__bubble')].map((node) => node.textContent);
-  assert.ok(bubbles.some((text) => text.includes('Contesto: demo-web-01, demo-crypto-01')));
+  assert.ok(bubbles.some((text) => text.includes('Contesto: demo-crypto-01, demo-web-01')));
 
   // Aprire i dettagli di una challenge non selezionata lascia invariata la chat.
   doc.querySelector('#challenge-list .challenge-item[data-id="demo-pwn-01"] .challenge-item__main').click();
   await wait();
   assert.equal(doc.getElementById('details-title').textContent, 'Il confine del buffer');
-  assert.deepEqual(savedMulti(), ['demo-web-01', 'demo-crypto-01']);
+  assert.deepEqual(savedMulti(), ['demo-crypto-01', 'demo-web-01']);
   assert.equal(doc.getElementById('mode-challenge').getAttribute('aria-checked'), 'true');
   assert.match(doc.getElementById('assistant-context-label').textContent, /Il parametro dimenticato/);
 
   // "Chiedi a OliDuck" aggiunge la challenge del drawer, chiude e dà il focus all'assistente.
   doc.getElementById('ask-from-details').click();
   await wait();
-  assert.deepEqual(savedMulti(), ['demo-web-01', 'demo-crypto-01', 'demo-pwn-01']);
+  assert.deepEqual(savedMulti(), ['demo-pwn-01', 'demo-crypto-01', 'demo-web-01']);
   assert.equal(doc.getElementById('drawer-layer').hidden, true);
   assert.equal(doc.activeElement.id, 'chat-input');
   chips = [...doc.querySelectorAll('#assistant-context-chips .context-chip')];
@@ -337,7 +349,7 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
   // La rimozione di una chip tocca solo quella challenge.
   doc.querySelector('#assistant-context-chips .context-chip[data-id="demo-crypto-01"] button').click();
   await wait();
-  assert.deepEqual(savedMulti(), ['demo-web-01', 'demo-pwn-01']);
+  assert.deepEqual(savedMulti(), ['demo-pwn-01', 'demo-web-01']);
   assert.equal(doc.querySelectorAll('#assistant-context-chips .context-chip').length, 2);
 
   // Generale resta disponibile anche con selezioni: nessun contesto nel payload.

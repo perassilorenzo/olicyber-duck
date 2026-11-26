@@ -14,6 +14,7 @@ export const KNOWLEDGE_META = Object.freeze({
   status: teachingKb.status,
   documents: teachingKb.documents,
   chunks: teachingKb.chunks,
+  reviewedAt: teachingKb.reviewedAt || null,
   policy: teachingKb.policy,
 });
 
@@ -38,6 +39,31 @@ function tokensOf(value) {
   return normalize(value)
     .split(/[^a-z0-9]+/)
     .filter((token) => token.length > 2 && !STOPWORDS.has(token) && !/^\d+$/.test(token));
+}
+
+/** Frase di confronto senza punteggiatura: "CSRF?" deve trovare "CSRF". */
+function phraseOf(value) {
+  return tokensOf(value).join(' ');
+}
+
+/** Sinonimi didattici: non aggiungono documenti, migliorano solo il matching. */
+const QUERY_SYNONYMS = Object.freeze({
+  boxing: 'csrf',
+  csrftoken: 'csrf token',
+  xss: 'cross site scripting',
+  sqlinjection: 'sql injection',
+  hashfunction: 'funzione hash',
+  funzionehash: 'funzione hash',
+  tls13: 'tls 1.3',
+});
+
+function expandedTokens(tokens) {
+  const expanded = [...tokens];
+  for (const token of tokens) {
+    const synonym = QUERY_SYNONYMS[token];
+    if (synonym) expanded.push(...tokensOf(synonym));
+  }
+  return unique(expanded);
 }
 
 function unique(values) {
@@ -73,8 +99,8 @@ function snippetOf(text, queryTokens, maxChars) {
 export function retrieveKnowledge({
   message = '', categories = [], tags = [], limit = 3, snippetChars = 520,
 } = {}) {
-  const queryTokens = unique(tokensOf(message));
-  const normalizedQuery = normalize(message).trim();
+  const queryTokens = expandedTokens(tokensOf(message));
+  const queryPhrase = phraseOf(message);
   const contextTokens = unique(tokensOf([...categories, ...tags].join(' '))).slice(0, 12);
   const maxResults = Math.max(1, Math.min(Number(limit) || 3, 5));
   const scored = [];
@@ -83,27 +109,59 @@ export function retrieveKnowledge({
     const title = normalize(item.title);
     const body = normalize(item.text);
     const tagText = normalize((item.tags || []).join(' '));
+    const topicText = normalize([...(item.topics || []), ...(item.keywords || [])].join(' '));
+    const titlePhrase = phraseOf(item.title);
+    const topicPhrase = phraseOf([...(item.topics || []), ...(item.keywords || [])].join(' '));
+    const bodyPhrase = phraseOf(item.text);
     let score = 0;
+    const matchedTokens = [];
     for (const token of queryTokens) {
-      if (title.includes(token)) score += 6;
+      const hit = title.includes(token) || topicText.includes(token)
+        || tagText.includes(token) || body.includes(token);
+      if (hit && !matchedTokens.includes(token)) matchedTokens.push(token);
+      if (title.includes(token)) score += 8;
+      if (topicText.includes(token)) score += 6;
       if (tagText.includes(token)) score += 4;
-      if (body.includes(token)) score += 3;
+      if (body.includes(token)) score += 2;
     }
-    if (normalizedQuery.length >= 5 && body.includes(normalizedQuery)) score += 12;
+    // La frase esatta pesa più dei singoli token: "funzione hash" deve
+    // privilegiare il documento dedicato rispetto a menzioni incidentali.
+    if (queryPhrase.length >= 5) {
+      if (titlePhrase.includes(queryPhrase)) score += 15;
+      else if (topicPhrase.includes(queryPhrase)) score += 10;
+      else if (bodyPhrase.includes(queryPhrase)) score += 6;
+    }
+    // Più concetti distinti della domanda sono coperti dallo stesso documento,
+    // più è probabile che sia il documento utile.
+    if (matchedTokens.length > 1) score += Math.min(6, matchedTokens.length - 1);
     for (const token of contextTokens) {
-      if (tagText.includes(token) || title.includes(token)) score += 2;
+      if (tagText.includes(token) || topicText.includes(token) || title.includes(token)) score += 2;
     }
-    if (score >= 3) scored.push({ item, score });
+    if (score >= 3) scored.push({ item, score, matchedTokens });
   }
 
   scored.sort((a, b) => b.score - a.score || String(a.item.id).localeCompare(String(b.item.id)));
-  return scored.slice(0, maxResults).map(({ item, score }) => ({
+  const deduped = [];
+  const seen = new Set();
+  for (const entry of scored) {
+    if (seen.has(entry.item.id)) continue;
+    seen.add(entry.item.id);
+    deduped.push(entry);
+    if (deduped.length === maxResults) break;
+  }
+  return deduped.map(({ item, score, matchedTokens }) => ({
     id: item.id,
     title: item.title,
     category: item.category || null,
     tags: Array.isArray(item.tags) ? item.tags : [],
+    topics: Array.isArray(item.topics) ? item.topics : [],
+    keywords: Array.isArray(item.keywords) ? item.keywords : [],
+    source: item.source || null,
+    url: item.url || null,
+    verifiedAt: item.verifiedAt || null,
     snippet: snippetOf(item.text, queryTokens, snippetChars),
     score,
+    matchedTokens,
   }));
 }
 
@@ -112,11 +170,17 @@ export function knowledgeContext(sources = []) {
   if (!sources.length) return null;
   return sources.map((source, position) => [
     `[${position + 1}] ${source.title} — categoria: ${source.category || 'generale'}`,
+    `Fonte: ${source.source || 'sintesi didattica originale'} | URL: ${source.url || 'non disponibile'} | verificato il: ${source.verifiedAt || 'data non indicata'}`,
     source.snippet,
   ].join('\n')).join('\n\n');
 }
 
-/** Metadati pubblici: mai testi dei documenti. */
+/** Metadati pubblici e verificabili: mai testi dei documenti. */
 export function publicKnowledgeSources(sources = []) {
-  return sources.map(({ id, title, category, tags, score }) => ({ id, title, category, tags, score }));
+  return sources.map(({
+    id, title, category, tags, topics, keywords, source, url, verifiedAt, score, matchedTokens,
+  }) => ({
+    id, title, category, tags, topics, keywords, source, url, verifiedAt, score,
+    matchedTokens: Array.isArray(matchedTokens) ? [...matchedTokens] : [],
+  }));
 }

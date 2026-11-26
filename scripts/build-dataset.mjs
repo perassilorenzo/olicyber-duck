@@ -17,7 +17,9 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  renameSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
@@ -1297,7 +1299,7 @@ function main() {
   writeJson(path.join(OUTPUT_DIR, 'catalog.json'), catalog);
   writeJson(path.join(OUTPUT_DIR, 'rag-index.json'), ragIndex);
   writeJson(path.join(OUTPUT_DIR, 'import-report.json'), importReport);
-  writeFileSync(path.join(OUTPUT_DIR, 'REPORT.md'), `${renderReport(counts, catalog, importReport, manifest)}\n`);
+  writeAtomic(path.join(OUTPUT_DIR, 'REPORT.md'), `${renderReport(counts, catalog, importReport, manifest)}\n`);
 
   console.log(`Dataset generato: ${allChallenges.length} challenge, ${kbDocuments.length} documenti KB, ${ragChunks.length} chunk, ${solutionDocuments.length} documenti soluzione.`);
   console.log('Output: dataset-input/{REPORT.md,manifest.json,import-report.json,catalog.json,rag-index.json}');
@@ -1379,8 +1381,24 @@ function buildLimitations(counts) {
   return limitations;
 }
 
+/**
+ * Scrittura atomica: i test possono eseguire il builder in processi diversi.
+ * Senza rename, un secondo builder e un hash in lettura possono intercettare
+ * un file parzialmente scritto e far fallire il controllo di determinismo.
+ */
+function writeAtomic(file, content) {
+  const temp = `${file}.tmp-${process.pid}-${process.hrtime.bigint()}`;
+  try {
+    writeFileSync(temp, content);
+    renameSync(temp, file);
+  } catch (error) {
+    try { unlinkSync(temp); } catch { /* file già rimosso */ }
+    throw error;
+  }
+}
+
 function writeJson(file, value) {
-  writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
+  writeAtomic(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 function renderReport(counts, catalog, importReport, manifest) {

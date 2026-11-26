@@ -6,6 +6,10 @@
     <meta name="description" content="OliDuck — libreria di challenge e tutor AI per prepararsi alle Olimpiadi Italiane di Cybersicurezza." />
     <meta name="theme-color" content="#1b4778" />
     <title>OliDuck — OliCyber Training Assistant</title>
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/assets/brand/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/assets/brand/icon-512.png" />
+    <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="stylesheet" href="/styles/main.css" />
     <script type="module" src="/src/main.js"></script>
@@ -15,17 +19,8 @@
 
     <header class="topbar">
       <div class="topbar__brand">
-        <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 48 48">
-            <path d="M7 29c0-10 7-17 17-17 7 0 13 3.5 16 10l-7 2.5-8-5.5-7 4.5 3.5 6.5-5.5 3.5L7 29Z" fill="currentColor" />
-            <path d="M40 22c4.5.8 7.5 3.2 6.8 5.8-.7 2.3-4 2.4-7.3 1.2l-3.5-2.5 4-4.5Z" fill="#ffc720" />
-            <circle cx="31" cy="19.5" r="2" fill="#1b4778" />
-            <path d="M14 34h19l-2.5 8H16.5L14 34Z" fill="#f33c3c" />
-            <path d="M23.5 37v3m-1.5-1.5h3" stroke="#fff" stroke-width="1.5" stroke-linecap="round" />
-          </svg>
-        </span>
+        <img class="brand-logo" src="/assets/brand/oliduck-logo-lockup.png" alt="OliDuck" width="481" height="462" />
         <div class="brand-text">
-          <strong>OliDuck</strong>
           <span>OliCyber Training Assistant</span>
         </div>
       </div>
@@ -40,6 +35,9 @@
           <span class="ai-status__dot" aria-hidden="true"></span>
           <span id="ai-status-label">Assistente: verifica…</span>
         </div>
+        <button type="button" class="icon-btn topbar__history-toggle" id="toggle-history" aria-label="Apri la cronologia" aria-controls="history-sidebar" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
+        </button>
         <button type="button" class="btn btn--ghost btn--sm topbar__assistant" id="focus-assistant">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" /></svg>
           Assistente
@@ -52,8 +50,61 @@
       <button type="button" data-panel-tab="assistant" role="tab" aria-selected="true" tabindex="0">Assistant</button>
     </nav>
 
-    <main id="main-content" class="workspace" data-view="assistant" style="--library-width: 40%">
-      <!-- A. Challenge Library (~40% per impostazione predefinita) -->
+    <main id="main-content" class="workspace" data-view="assistant" data-assistant-collapsed="false" data-training-open="false" data-history-open="false" style="--library-width: 40%">
+      <!-- A. NavLaterale: navigazione, nuove chat e cronologia persistente. -->
+      <aside class="history-sidebar" id="history-sidebar" aria-label="Navigazione e cronologia chat">
+        <div class="history-sidebar__head">
+          <img class="history-sidebar__mark" src="/assets/brand/oliduck-logo-mark.png" alt="" aria-hidden="true" width="340" height="340" />
+          <div>
+            <p class="eyebrow">Workspace</p>
+            <h2>OliDuck</h2>
+          </div>
+        </div>
+
+        <button type="button" class="btn btn--primary btn--sm history-sidebar__new" id="new-chat">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          Nuova chat
+        </button>
+
+        <nav class="history-nav" aria-label="Viste dell'area di lavoro">
+          <button type="button" data-sidebar-view="training" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h5" /></svg>
+            Training
+          </button>
+          <button type="button" data-sidebar-view="library" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6v14H4zM14 5h6v14h-6z" /></svg>
+            Libreria
+          </button>
+          <button type="button" data-sidebar-view="assistant" aria-pressed="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" /></svg>
+            Tutor AI
+          </button>
+        </nav>
+
+        <div class="history-sidebar__scroll">
+          <section class="history-group" aria-labelledby="history-challenge-title">
+            <div class="history-group__head">
+              <h3 id="history-challenge-title">Chat challenge</h3>
+              <span id="history-challenge-count">0</span>
+            </div>
+            <div class="history-list" id="chat-history-challenge" role="list"></div>
+          </section>
+          <section class="history-group" aria-labelledby="history-general-title">
+            <div class="history-group__head">
+              <h3 id="history-general-title">Chat generali</h3>
+              <span id="history-general-count">0</span>
+            </div>
+            <div class="history-list" id="chat-history-general" role="list"></div>
+          </section>
+        </div>
+
+        <div class="history-sidebar__footer">
+          <button type="button" class="btn btn--outline btn--sm" id="restore-assistant" hidden>Ripristina tutor AI</button>
+          <p>Le chat restano in questo browser. I titoli derivano dal primo messaggio.</p>
+        </div>
+      </aside>
+
+      <!-- B. Challenge Library (~40% per impostazione predefinita) -->
       <section class="panel library-panel" id="library-panel" aria-labelledby="library-title" role="tabpanel" aria-label="Challenge Library">
         <div class="panel__header">
           <div>
@@ -123,6 +174,20 @@
         </div>
       </section>
 
+      <!-- C. Training: dashboard, contesto di studio e azioni rapide. -->
+      <section class="training-surface" id="training-panel" aria-labelledby="training-title">
+        <div class="training-surface__header">
+          <div>
+            <p class="eyebrow">Area di studio</p>
+            <h2 id="training-title">Training</h2>
+          </div>
+          <button type="button" class="icon-btn training-surface__close" id="close-training" aria-label="Chiudi la vista Training" title="Chiudi">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <div class="training-surface__body" id="training-body"></div>
+      </section>
+
       <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" aria-label="Ridimensiona i pannelli" aria-valuemin="22" aria-valuemax="72" aria-valuenow="40" tabindex="0" title="Trascina per ridimensionare · doppio clic per ripristinare">
         <span class="splitter__grip" aria-hidden="true"></span>
       </div>
@@ -130,9 +195,12 @@
       <!-- B. OliDuck Assistant (~60% per impostazione predefinita) -->
       <aside class="panel assistant-panel" id="assistant-panel" aria-labelledby="assistant-title" role="tabpanel" aria-label="OliDuck Assistant">
         <div class="panel__header panel__header--compact">
-          <div>
-            <p class="eyebrow">Tutor didattico</p>
-            <h2 id="assistant-title">OliDuck Assistant</h2>
+          <div class="panel__title-group">
+            <img class="panel__brand-mark" src="/assets/brand/oliduck-logo-mark.png" alt="" aria-hidden="true" width="340" height="340" />
+            <div>
+              <p class="eyebrow">Tutor didattico</p>
+              <h2 id="assistant-title">OliDuck Assistant</h2>
+            </div>
           </div>
           <div class="panel__header-actions">
             <button type="button" class="icon-btn" id="clear-chat" title="Cancella conversazione" aria-label="Cancella la conversazione corrente" disabled>
@@ -140,6 +208,9 @@
             </button>
             <button type="button" class="icon-btn" id="expand-assistant" aria-label="Espandi l'assistente" title="Espandi l'assistente">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+            </button>
+            <button type="button" class="icon-btn" id="toggle-assistant" aria-label="Comprimi il tutor AI" aria-pressed="false" title="Comprimi il tutor AI">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
             </button>
           </div>
         </div>
@@ -181,6 +252,12 @@
         <form class="chat-form" id="chat-form">
           <label class="sr-only" for="chat-input">Messaggio per OliDuck</label>
           <textarea id="chat-input" rows="2" maxlength="4000" placeholder="Chiedi un hint, una spiegazione o verifica il tuo ragionamento…"></textarea>
+          <details class="statement-excerpt" id="statement-excerpt">
+            <summary>Incolla un estratto della consegna (facoltativo)</summary>
+            <label class="sr-only" for="statement-input">Estratto non verificato della consegna</label>
+            <textarea id="statement-input" rows="3" maxlength="2000" placeholder="Incolla solo il testo della consegna che vuoi far spiegare…"></textarea>
+            <p class="statement-excerpt__note">Testo non verificato: non è una fonte autorevole. Non inserire flag, soluzioni o istruzioni da seguire. Resta associato a questa chat per i messaggi successivi.</p>
+          </details>
           <div class="chat-form__footer">
             <span class="chat-hint">Invio per inviare · Shift+Invio per andare a capo</span>
             <div class="chat-form__buttons">
@@ -252,8 +329,9 @@
           </button>
         </div>
         <div class="modal__body prose">
+          <p class="about-brand"><img src="/assets/brand/oliduck-logo-lockup.png" alt="Logo OliDuck" width="481" height="462" /></p>
           <p><strong>OliDuck</strong> è un ambiente di studio indipendente per chi si prepara alle Olimpiadi Italiane di Cybersicurezza. Il nome unisce OliCyber e il concetto di <em>rubber duck debugging</em>: spiegare un problema ad alta voce per capirlo meglio.</p>
-          <p>Il workspace ha due pannelli collegati: la Challenge Library e il tutor AI. Puoi chiedere informazioni generali oppure aprire una conversazione dedicata alla challenge selezionata. OliDuck non fornisce subito soluzioni: aiuta a comprendere il problema, individuare i concetti, ricevere hint progressivi e verificare il proprio ragionamento.</p>
+          <p>Il workspace organizza tre aree: navigazione e cronologia chat a sinistra, Training e Challenge Library al centro, tutor AI a destra. Puoi chiedere informazioni generali oppure aprire una conversazione dedicata alla challenge selezionata. OliDuck non fornisce subito soluzioni: aiuta a comprendere il problema, individuare i concetti, ricevere hint progressivi e verificare il proprio ragionamento.</p>
           <p>Le challenge incluse sono esempi didattici contrassegnati come DEMO e non sostituiscono il portale ufficiale. Le fonti pubbliche disponibili e i limiti del catalogo sono documentati in <code>docs/PUBLIC-SOURCES-RESEARCH.md</code>.</p>
           <p>Nessun account è richiesto: progressi e conversazioni restano nel browser. Quando il backend AI non è configurato, l'assistente risponde in modalità DEMO in modo esplicito.</p>
         </div>

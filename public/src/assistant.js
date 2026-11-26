@@ -1,10 +1,14 @@
-/** Assistente: conversazioni per contesto multiplo, modalità generale, streaming e annullamento sicuro. */
+/** Assistente: chat persistenti, contesto challenge, streaming e annullamento sicuro. */
 
 import { byId, formatTime, toast, confirmDialog } from './utils.js';
 import { sendChat, ApiError } from './api.js';
-import { GENERAL_CONVERSATION_ID, SELECTED_CHALLENGE_ID_PATTERN } from './store.js';
+import { renderMarkdownInto } from './markdown.js';
+import {
+  GENERAL_CONVERSATION_ID, SELECTED_CHALLENGE_ID_PATTERN, CHAT_CONVERSATION_PREFIX,
+} from './store.js';
 
 const MAX_HISTORY = 12;
+const MAX_EXCERPT_CHARS = 2000;
 
 function node(tag, className, text) {
   const element = document.createElement(tag);
@@ -13,9 +17,17 @@ function node(tag, className, text) {
   return element;
 }
 
-/** Chiave stabile: l'ordine di selezione non deve cambiare la conversazione. */
+/** Chiave stabile per le conversazioni contestuali automatiche. */
 function conversationKeyFor(ids) {
   return ids.length ? `ctx:${[...ids].sort().join('|')}` : GENERAL_CONVERSATION_ID;
+}
+
+function isExplicitChat(id) {
+  return typeof id === 'string' && id.startsWith(CHAT_CONVERSATION_PREFIX);
+}
+
+function shortTitle(message) {
+  return String(message || '').replace(/\s+/g, ' ').trim().slice(0, 120);
 }
 
 export function createAssistant({ store, getSelectedChallenges, getChallenge, onConversationChange }) {
@@ -34,6 +46,7 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
   const retryButton = byId('retry-chat');
   const modeButtons = [byId('mode-general'), byId('mode-challenge')];
   const challengeHint = byId('mode-challenge-hint');
+  const statementInput = byId('statement-input');
 
   function readSelection() {
     const provider = getSelectedChallenges
@@ -43,20 +56,60 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
         && SELECTED_CHALLENGE_ID_PATTERN.test(challenge.id));
   }
 
+  // Una chat salvata viene riaperta con i suoi ID: il contesto non dipende
+  // dall'ordine con cui l'utente ha cliccato le card nella sessione corrente.
+  let applyingContext = false;
+  const savedId = store.getActiveConversation();
+  if (savedId !== GENERAL_CONVERSATION_ID && store.getConversation(savedId).length) {
+    const savedMeta = store.getConversationMeta(savedId);
+    if (savedMeta.challengeIds.length) {
+      applyingContext = true;
+      store.setSelectedChallengeIds(savedMeta.challengeIds);
+      applyingContext = false;
+    }
+  }
   let selections = readSelection();
-  let mode = selections.length ? 'challenge' : 'general';
-  let key = conversationKeyFor(selections.map((challenge) => challenge.id));
+  let mode = savedId !== GENERAL_CONVERSATION_ID
+    && store.getConversationMeta(savedId).kind === 'challenge'
+    ? 'challenge'
+    : (selections.length ? 'challenge' : 'general');
+  let key = savedId !== GENERAL_CONVERSATION_ID && store.getConversation(savedId).length
+    ? savedId
+    : (mode === 'challenge' ? conversationKeyFor(selections.map((challenge) => challenge.id)) : GENERAL_CONVERSATION_ID);
+  if (mode === 'challenge' && !selections.length) mode = 'general';
+  if (mode === 'general' && key !== GENERAL_CONVERSATION_ID && !store.getConversationMeta(key).challengeIds.length) {
+    // Le chat generali esplicite restano valide: solo le chiavichallenge orfane
+    // vengono riportate alla chat generale canonica.
+    if (!isExplicitChat(key)) key = GENERAL_CONVERSATION_ID;
+  }
   let active = null;
   let aiMode = null;
   let statusMessage = '';
   const lastRequests = new Map();
 
-  function messageNode(message) {
+  function messageNode(message, options = {}) {
     const wrapper = node('div', `chat-message chat-message--${message.role}`);
+    if (options.greeting) wrapper.classList.add('chat-message--greeting');
     wrapper.append(node('span', 'chat-message__role', message.role === 'user' ? 'Tu' : 'OliDuck'));
-    wrapper.append(node('div', 'chat-message__bubble', message.content));
+    const bubble = node('div', 'chat-message__bubble');
+    if (message.role === 'assistant') {
+      // Markdown del modello: renderizzato in nodi, mai come HTML.
+      bubble.classList.add('chat-message__bubble--markdown');
+      renderMarkdownInto(bubble, message.content);
+    } else {
+      bubble.textContent = String(message.content ?? '');
+    }
+    wrapper.append(bubble);
     if (message.createdAt) wrapper.append(node('span', 'chat-message__time', formatTime(message.createdAt)));
     return wrapper;
+  }
+
+  function readStatementExcerpt() {
+    return statementInput ? String(statementInput.value || '').trim().slice(0, MAX_EXCERPT_CHARS) : '';
+  }
+
+  function clearStatementExcerpt() {
+    if (statementInput) statementInput.value = '';
   }
 
   function selectedTitles() {
@@ -131,11 +184,12 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
 
     log.replaceChildren();
     empty.hidden = true;
-    log.append(messageNode({ role: 'assistant', content: greeting() }));
-    for (const message of store.getConversation(key)) log.append(messageNode(message));
+    log.append(messageNode({ role: 'assistant', content: greeting() }, { greeting: true }));
+    const messages = store.getConversation(key);
+    for (const message of messages) log.append(messageNode(message));
     if (busyHere && active?.typing) log.append(active.typing);
 
-    clearButton.disabled = store.getConversation(key).length === 0;
+    clearButton.disabled = messages.length === 0;
     sendButton.disabled = busyHere || !input.value.trim();
     cancelButton.hidden = !busyHere;
     input.disabled = busyHere;
@@ -143,22 +197,64 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
     scrollToEnd();
   }
 
+  /** Apre una chat esistente, ripristinando il suo contesto challenge. */
+  function openConversation(id, { keepSelection = false } = {}) {
+    if (typeof id !== 'string' || !id) return false;
+    const automaticContext = id.startsWith('ctx:');
+    if (id !== GENERAL_CONVERSATION_ID && !store.getConversation(id).length
+      && !isExplicitChat(id) && !automaticContext) return false;
+    if (active) { active.controller.abort(); active = null; }
+    const meta = store.getConversationMeta(id);
+    if (meta.kind === 'challenge' && meta.challengeIds.length) {
+      mode = 'challenge';
+      if (!keepSelection) {
+        applyingContext = true;
+        store.setSelectedChallengeIds(meta.challengeIds);
+        applyingContext = false;
+      }
+      selections = readSelection();
+    } else {
+      mode = 'general';
+    }
+    key = id;
+    store.setActiveConversation(id);
+    statusMessage = '';
+    input.value = '';
+    input.style.height = '';
+    clearStatementExcerpt();
+    hideError();
+    render();
+    onConversationChange?.();
+    return true;
+  }
+
+  /** Una nuova chat parte sempre senza contesto challenge: non eredita la sessione. */
+  function newChat() {
+    const id = store.createConversation({
+      title: 'Nuova chat',
+      challengeIds: [],
+    });
+    openConversation(id, { keepSelection: true });
+    input.focus();
+    return id;
+  }
+
   /** Rilegge lo store dopo una selezione multipla e mantiene coerente la conversazione. */
   function syncSelection() {
+    if (applyingContext) return;
     selections = readSelection();
     if (mode === 'challenge' && !selections.length) mode = 'general';
-    const nextKey = mode === 'challenge'
+    const canonical = mode === 'challenge'
       ? conversationKeyFor(selections.map((challenge) => challenge.id))
       : GENERAL_CONVERSATION_ID;
-    if (nextKey !== key) {
-      if (active) { active.controller.abort(); active = null; }
-      statusMessage = '';
-      input.value = '';
-      input.style.height = '';
-      hideError();
-      key = nextKey;
-    }
-    render();
+    if (canonical === key) { render(); return; }
+    // Una chat esplicita con lo stesso contesto non viene sostituita dalla
+    // conversazione automatica: resta nella cronologia con il suo titolo.
+    const currentMeta = store.getConversationMeta(key);
+    const sameContext = currentMeta.kind === (mode === 'challenge' ? 'challenge' : 'general')
+      && JSON.stringify(currentMeta.challengeIds) === JSON.stringify(mode === 'challenge' ? selections.map((c) => c.id) : []);
+    if (isExplicitChat(key) && sameContext) { render(); return; }
+    openConversation(canonical, { keepSelection: true });
   }
 
   function finalize(request) {
@@ -170,57 +266,67 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
   async function submit(rawMessage, { isRetry = false } = {}) {
     const message = String(rawMessage || '').trim();
     if (!message || active) return;
+    const previous = lastRequests.get(key);
+    const storedExcerpt = store.getConversationMeta(key).statementExcerpt || '';
+    const statementExcerpt = isRetry
+      ? (previous?.statementExcerpt || storedExcerpt)
+      : (readStatementExcerpt() || storedExcerpt);
     statusMessage = '';
     const requestChallengeIds = mode === 'challenge'
       ? selections.map((challenge) => challenge.id)
       : [];
-    const requestKey = mode === 'challenge'
-      ? conversationKeyFor(requestChallengeIds)
-      : GENERAL_CONVERSATION_ID;
     if (mode === 'challenge' && !requestChallengeIds.length) {
       showError('Seleziona almeno una challenge per usare la modalità contestuale.');
       return;
     }
 
-    let conversation = store.getConversation(requestKey);
+    let conversation = store.getConversation(key);
     if (isRetry && conversation.at(-1)?.role === 'user' && conversation.at(-1)?.content === message) {
       conversation = conversation.slice(0, -1);
     }
     const history = conversation.slice(-MAX_HISTORY).map(({ role, content }) => ({ role, content }));
     if (!isRetry) {
-      store.appendMessage(requestKey, {
+      const metaPatch = {};
+      if (statementExcerpt) metaPatch.statementExcerpt = statementExcerpt;
+      if (isExplicitChat(key) && /^Nuova chat/.test(store.getConversationMeta(key).title)) {
+        metaPatch.title = shortTitle(message) || 'Chat';
+      }
+      if (Object.keys(metaPatch).length) store.setConversationMeta(key, metaPatch);
+      store.appendMessage(key, {
         role: 'user', content: message, createdAt: new Date().toISOString(),
       });
     }
-    lastRequests.set(requestKey, message);
+    lastRequests.set(key, { message, statementExcerpt, challengeIds: [...requestChallengeIds] });
     hideError();
 
     input.value = '';
     input.style.height = '';
+    clearStatementExcerpt();
     const typing = node('div', 'chat-message chat-message--assistant');
     typing.append(node('span', 'chat-message__role', 'OliDuck'));
     const bubble = node('div', 'chat-message__bubble typing');
     bubble.setAttribute('aria-label', 'OliDuck sta rispondendo');
-    bubble.innerHTML = '<i></i><i></i><i></i>';
+    for (let dot = 0; dot < 3; dot += 1) bubble.append(node('i'));
     typing.append(bubble);
     log.append(typing);
     scrollToEnd();
 
     const controller = new AbortController();
-    const request = { key: requestKey, controller, typing, message };
+    const request = { key, controller, typing, message };
     active = request;
     render();
     scrollToEnd();
 
     try {
       const result = await sendChat(
-        { challengeIds: requestChallengeIds, message, history },
+        { challengeIds: requestChallengeIds, message, history, statementExcerpt },
         {
           signal: controller.signal,
           onProgress: (cumulative) => {
             if (request.typing.isConnected) {
               bubble.classList.remove('typing');
-              bubble.textContent = cumulative;
+              bubble.classList.add('chat-message__bubble--markdown');
+              renderMarkdownInto(bubble, cumulative);
               scrollToEnd();
             }
           },
@@ -228,7 +334,7 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
       );
       const reply = result.reply || 'Il backend non ha restituito una risposta utilizzabile.';
       if (active?.controller === controller) {
-        store.appendMessage(requestKey, {
+        store.appendMessage(key, {
           role: 'assistant', content: reply, createdAt: new Date().toISOString(),
         });
         onConversationChange?.();
@@ -242,7 +348,7 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
           ? error.message
           : 'Non è stato possibile contattare l’assistente. Controlla la connessione e riprova.';
         if (active?.controller === controller) {
-          showError(text, lastRequests.has(requestKey));
+          showError(text, lastRequests.has(key));
           statusMessage = 'Richiesta non riuscita.';
         }
       }
@@ -275,52 +381,41 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
   cancelButton.addEventListener('click', () => active?.controller.abort());
 
   retryButton.addEventListener('click', () => {
-    const message = lastRequests.get(key);
-    if (message) submit(message, { isRetry: true });
+    const previous = lastRequests.get(key);
+    if (previous?.message) submit(previous.message, { isRetry: true });
   });
 
   clearButton.addEventListener('click', async () => {
-    if (mode === 'general') {
-      const okGeneral = await confirmDialog('Cancellare la conversazione generale salvata in questo browser?');
-      if (!okGeneral) return;
-    } else {
-      const titles = selectedTitles().join(', ');
-      const okChallenge = await confirmDialog(
-        `Cancellare la conversazione di ${titles}? L'operazione non è reversibile.`,
-      );
-      if (!okChallenge) return;
-    }
+    const meta = store.getConversationMeta(key);
+    const ok = await confirmDialog(`Cancellare la chat “${meta.title}” salvata in questo browser? L'operazione non è reversibile.`);
+    if (!ok) return;
     if (active?.key === key) { active.controller.abort(); active = null; }
-    store.clearConversation(key);
+    if (isExplicitChat(key)) store.deleteConversation(key);
+    else store.clearConversation(key);
     lastRequests.delete(key);
     statusMessage = '';
     hideError();
-    render();
-    toast('Conversazione cancellata.');
-    onConversationChange?.();
+    openConversation(GENERAL_CONVERSATION_ID, { keepSelection: true });
+    toast('Chat cancellata.');
   });
 
   function switchMode(next) {
     const target = next === 'challenge' ? 'challenge' : 'general';
-    if (target === 'challenge') syncSelection();
-    if (target === 'challenge' && !selections.length) {
-      showError('Seleziona una challenge dalla libreria per aprire una conversazione contestuale.');
+    if (target === 'challenge') {
+      selections = readSelection();
+      if (!selections.length) {
+        showError('Seleziona una challenge dalla libreria per aprire una conversazione contestuale.');
+        return;
+      }
+      mode = 'challenge';
+      const canonical = conversationKeyFor(selections.map((challenge) => challenge.id));
+      if (canonical === key) { render(); return; }
+      openConversation(canonical, { keepSelection: true });
       return;
     }
-    if (target === mode) {
-      if (target === 'challenge') key = conversationKeyFor(selections.map((challenge) => challenge.id));
-      return;
-    }
-    if (active) { active.controller.abort(); active = null; }
-    statusMessage = '';
-    mode = target;
-    key = target === 'challenge'
-      ? conversationKeyFor(selections.map((challenge) => challenge.id))
-      : GENERAL_CONVERSATION_ID;
-    input.value = '';
-    input.style.height = '';
-    hideError();
-    render();
+    mode = 'general';
+    if (key === GENERAL_CONVERSATION_ID) { render(); return; }
+    openConversation(GENERAL_CONVERSATION_ID, { keepSelection: true });
   }
 
   for (const button of modeButtons) {
@@ -340,6 +435,16 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
     render,
     syncSelection,
     switchMode,
+    newChat,
+    openConversation,
+    deleteConversation(id) {
+      if (typeof id !== 'string') return;
+      if (active?.key === id) { active.controller.abort(); active = null; }
+      store.deleteConversation(id);
+      lastRequests.delete(id);
+      if (key === id) openConversation(GENERAL_CONVERSATION_ID, { keepSelection: true });
+      else onConversationChange?.();
+    },
     focus() { if (!input.disabled) input.focus(); },
     setMode(next) { aiMode = next; render(); },
     /** Compatibilità con il vecchio singolo ID: sostituisce la selezione. */
@@ -352,5 +457,6 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
     get selectedChallenges() { return [...selections]; },
     get isBusy() { return Boolean(active && active.key === key); },
     get conversationKey() { return key; },
+    get isApplyingContext() { return applyingContext; },
   };
 }

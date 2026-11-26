@@ -7,6 +7,8 @@ import { createLibrary } from './library.js';
 import { createDetails } from './details.js';
 import { createAssistant } from './assistant.js';
 import { createPanels } from './panels.js';
+import { createHistory } from './history.js';
+import { createTraining } from './training.js';
 import { fetchAssistantStatus } from './api.js';
 import { catalogProvenance } from './provenance.js';
 
@@ -16,6 +18,8 @@ let library;
 let details;
 let assistant;
 let panels;
+let history;
+let training;
 /** Challenge mostrata nel drawer: indipendente dalla selezione della chat. */
 let detailChallengeId = null;
 
@@ -37,32 +41,75 @@ function updateWidthLabels(width, assistantPercent) {
 
 function applyPreferenceUI() {
   if (!panels) return;
-  const { panelWidth, activePanel } = store.state.preferences;
+  const { panelWidth, activePanel, assistantCollapsed } = store.state.preferences;
   panels.apply(panelWidth, { persist: false });
+  setAssistantCollapsed(assistantCollapsed, { persist: false });
   if (!panels.isCompact()) panels.setView(activePanel, { persist: false });
+}
+
+function setAssistantCollapsed(collapsed, { persist = true } = {}) {
+  const value = Boolean(collapsed);
+  byId('main-content').dataset.assistantCollapsed = String(value);
+  const button = byId('toggle-assistant');
+  button.setAttribute('aria-pressed', String(value));
+  button.setAttribute('aria-label', value ? 'Ripristina il tutor AI' : 'Comprimi il tutor AI');
+  button.title = value ? 'Ripristina il tutor AI' : 'Comprimi il tutor AI';
+  byId('restore-assistant').hidden = !value;
+  if (persist) store.setPreference('assistantCollapsed', value);
+  if (!value) panels?.reflow();
+}
+
+function setTrainingOpen(open) {
+  byId('main-content').dataset.trainingOpen = String(Boolean(open));
+  history?.setActiveView(open ? 'training' : (byId('main-content').dataset.view || 'assistant'));
+}
+
+function setHistoryOpen(open) {
+  byId('main-content').dataset.historyOpen = String(Boolean(open));
+  byId('toggle-history').setAttribute('aria-expanded', String(Boolean(open)));
+}
+
+function refreshWorkspace() {
+  history?.render();
+  training?.render();
+}
+
+/** La challenge richiesta diventa il contesto primario, non l'ultima della coda. */
+function makePrimary(challenge) {
+  const remaining = store.getSelectedChallengeIds().filter((id) => id !== challenge.id);
+  if (remaining.length >= MAX_SELECTED_CHALLENGES) remaining.pop();
+  store.setSelectedChallengeIds([challenge.id, ...remaining]);
 }
 
 /** La libreria ha già aggiornato lo store: qui solo effetti collaterali sull'UI. */
 function selectChallenge(challenge, nowSelected) {
-  if (nowSelected) assistant.switchMode('challenge');
+  if (nowSelected) {
+    makePrimary(challenge);
+    assistant.switchMode('challenge');
+  }
   if (panels.isCompact()) panels.setView('assistant');
   assistant.focus();
 }
 
 function askAssistant(challenge = getDetailChallenge()) {
   if (challenge) {
-    const ids = store.getSelectedChallengeIds();
-    if (!ids.includes(challenge.id)) {
-      if (ids.length >= MAX_SELECTED_CHALLENGES) {
-        toast(`Puoi selezionare al massimo ${MAX_SELECTED_CHALLENGES} challenge`);
-      } else {
-        store.setSelectedChallengeIds([...ids, challenge.id]);
-      }
+    if (store.getSelectedChallengeIds().length >= MAX_SELECTED_CHALLENGES
+      && !store.getSelectedChallengeIds().includes(challenge.id)) {
+      toast(`Puoi selezionare al massimo ${MAX_SELECTED_CHALLENGES} challenge: la più vecchia verrà sostituita`);
     }
+    makePrimary(challenge);
   }
   details.close();
+  setAssistantCollapsed(false);
   panels.setView('assistant');
   if (store.getSelectedChallengeIds().length) assistant.switchMode('challenge');
+  assistant.focus();
+}
+
+function startNewChat() {
+  assistant.newChat();
+  setAssistantCollapsed(false);
+  panels.setView('assistant');
   assistant.focus();
 }
 
@@ -114,6 +161,7 @@ function setupSettings() {
     if (!ok) return;
     store.clearConversations();
     assistant.render();
+    refreshWorkspace();
     toast('Conversazioni cancellate.');
   });
 
@@ -125,6 +173,7 @@ function setupSettings() {
     assistant.syncSelection();
     assistant.switchMode('general');
     details.render();
+    refreshWorkspace();
     toast('Dati locali cancellati.');
   });
 
@@ -146,20 +195,70 @@ async function init() {
   window.addEventListener('resize', () => panels.reflow(), { passive: true });
 
   byId('focus-assistant').addEventListener('click', () => {
+    setAssistantCollapsed(false);
     panels.setView('assistant');
     assistant.focus();
   });
+  byId('toggle-assistant').addEventListener('click', () => {
+    setAssistantCollapsed(!store.state.preferences.assistantCollapsed);
+  });
+  byId('restore-assistant').addEventListener('click', () => setAssistantCollapsed(false));
+  byId('toggle-history').addEventListener('click', () => {
+    setHistoryOpen(byId('main-content').dataset.historyOpen !== 'true');
+  });
+  byId('close-training').addEventListener('click', () => setTrainingOpen(false));
 
   assistant = createAssistant({
     store,
     getSelectedChallenges,
-    onConversationChange: () => library?.render(),
+    onConversationChange: () => refreshWorkspace(),
   });
 
   details = createDetails({
     store,
     getChallenge: getDetailChallenge,
     onAsk: askAssistant,
+  });
+
+  history = createHistory({
+    store,
+    onOpenConversation: (id) => {
+      if (!assistant.openConversation(id)) return;
+      setTrainingOpen(false);
+      setHistoryOpen(false);
+      if (panels.isCompact()) panels.setView('assistant');
+      setAssistantCollapsed(false);
+      history.setActiveView('assistant');
+      assistant.focus();
+    },
+    onNewChat: startNewChat,
+    onDeleteConversation: (id) => assistant.deleteConversation(id),
+    onViewChange: (view) => {
+      if (view === 'training') {
+        setTrainingOpen(true);
+        return;
+      }
+      setTrainingOpen(false);
+      if (view === 'library' || view === 'assistant') {
+        panels.setView(view);
+        if (view === 'assistant') setAssistantCollapsed(false);
+      }
+    },
+  });
+
+  training = createTraining({
+    store,
+    getCatalog: () => catalog,
+    getSelectedChallenges,
+    getDetailChallenge,
+    onOpenDetails: openDetails,
+    onAskAssistant: askAssistant,
+    onOpenLibrary: () => {
+      setTrainingOpen(false);
+      panels.setView('library');
+      history.setActiveView('library');
+    },
+    onNewChat: startNewChat,
   });
 
   function renderCatalogProvenance(meta, challenges) {
@@ -189,6 +288,7 @@ async function init() {
     onOpenDetails: openDetails,
   });
   library.correctFilters();
+  refreshWorkspace();
 
   let lastNotifiedState = store.state;
   store.subscribe((state) => {
@@ -201,15 +301,20 @@ async function init() {
     const statusesChanged = JSON.stringify(previous.statuses) !== JSON.stringify(state.statuses);
     const selectionChanged = JSON.stringify(previous.selectedChallengeIds)
       !== JSON.stringify(state.selectedChallengeIds);
+    const conversationsChanged = JSON.stringify(previous.conversations) !== JSON.stringify(state.conversations)
+      || JSON.stringify(previous.conversationMeta) !== JSON.stringify(state.conversationMeta);
+    const activeChanged = previous.activeConversation !== state.activeConversation;
     const themeChanged = previous.preferences.theme !== state.preferences.theme;
     const layoutChanged = previous.preferences.panelWidth !== state.preferences.panelWidth
-      || previous.preferences.activePanel !== state.preferences.activePanel;
+      || previous.preferences.activePanel !== state.preferences.activePanel
+      || previous.preferences.assistantCollapsed !== state.preferences.assistantCollapsed;
 
     if (filtersChanged) library.syncFilters();
     else if (statusesChanged || selectionChanged) library.render();
 
     if (statusesChanged) details.render();
-    if (selectionChanged) assistant.syncSelection();
+    if (selectionChanged && !assistant.isApplyingContext) assistant.syncSelection();
+    if (statusesChanged || selectionChanged || conversationsChanged || activeChanged) refreshWorkspace();
     if (themeChanged) applyTheme(state.preferences.theme);
     if (layoutChanged) applyPreferenceUI();
   });

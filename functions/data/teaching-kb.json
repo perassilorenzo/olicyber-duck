@@ -1,9 +1,10 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "kind": "teaching-knowledge-base",
-  "source": "Sintesi didattica originale OliDuck",
+  "source": "Sintesi didattica originale OliDuck, con riferimenti a standard pubblici verificati",
   "status": "active",
-  "note": "Definizioni generali scritte per questo progetto. Nessun testo di challenge, hint, flag, soluzione, documento di risoluzione, codice offensivo o allegato.",
+  "reviewedAt": "2026-11-26",
+  "note": "Definizioni generali scritte per questo progetto. Nessun testo di challenge, indicazione risolutiva, segreto, documento di risoluzione, codice offensivo o allegato. Le fonti elencate sono standard o guide pubbliche; quando non esiste una fonte esterna associata al concetto, il documento dichiara di essere una sintesi originale con url null.",
   "policy": {
     "containsChallengeDescriptions": false,
     "containsStatements": false,
@@ -21,142 +22,257 @@
     {
       "id": "concept-encoding",
       "title": "Codifica dei dati",
-      "category": "Misc",
+      "category": "Programmazione e scripting",
       "tags": ["encoding", "base64", "ascii", "utf-8", "rappresentazione"],
-      "text": "La codifica converte dati da una rappresentazione a un'altra senza modificarne il significato. ASCII e UTF-8 sono modi per rappresentare caratteri come numeri; Base64 rappresenta dati binari con caratteri testuali. Una codifica non è una misura di sicurezza: non nasconde informazioni e non richiede una chiave. La distinzione tra codifica, compressione e cifratura è fondamentale per interpretare correttamente un messaggio."
+      "topics": ["codifica", "Base64", "UTF-8", "ASCII"],
+      "keywords": ["base64", "padding", "byte", "testo", "binario"],
+      "source": "RFC 4648 — The Base16, Base32, and Base64 Data Encodings",
+      "url": "https://www.rfc-editor.org/rfc/rfc4648.txt",
+      "verifiedAt": "2026-11-26",
+      "text": "La codifica converte dati da una rappresentazione a un'altra senza modificarne il significato. ASCII e UTF-8 sono modi per rappresentare caratteri come numeri; Base64 (RFC 4648) rappresenta dati binari con 64 simboli testuali, raggruppando 3 byte in 4 caratteri e usando '=' come padding finale. Una codifica non è una misura di sicurezza: non nasconde informazioni, non richiede una chiave e chiunque può invertirla. Distinguere codifica, compressione e cifratura è fondamentale per interpretare correttamente un messaggio."
     },
     {
       "id": "concept-hash",
-      "title": "Funzione hash",
-      "category": "Crypto",
-      "tags": ["hash", "digest", "collisioni", "integrita"],
-      "text": "Una funzione hash trasforma dati di lunghezza arbitraria in un valore di lunghezza fissa chiamato digest. È deterministica: lo stesso input produce sempre lo stesso output. Le funzioni crittografiche sono progettate per essere resistenti alle collisioni e per non consentire di ricostruire l'input dal digest. Vengono usate per verificare l'integrità dei dati e come componente di altri meccanismi, non per nascondere un segreto."
+      "title": "Funzione hash, integrità, HMAC e password",
+      "category": "Crittografia",
+      "tags": ["hash", "digest", "collisioni", "integrita", "preimage", "hmac", "argon2id", "scrypt", "bcrypt", "salt"],
+      "topics": ["funzione hash", "collisioni", "preimage resistance", "HMAC", "password hashing"],
+      "keywords": ["digest", "integrita", "sha-256", "chiave", "sale", "argon2", "bcrypt", "scrypt", "owasp"],
+      "source": "NIST FIPS 180-4 (Update 1) e pagina NIST sulle funzioni hash; RFC 2104; RFC 9106; RFC 7914; OWASP Password Storage Cheat Sheet",
+      "url": "https://csrc.nist.gov/pubs/fips/180-4/upd1/final",
+      "verifiedAt": "2026-11-26",
+      "references": [
+        { "name": "NIST — Hash Functions", "url": "https://csrc.nist.gov/projects/hash-functions" },
+        { "name": "RFC 2104 — HMAC, sezioni 1, 2 e 6", "url": "https://www.rfc-editor.org/rfc/rfc2104.txt" },
+        { "name": "RFC 9106 — Argon2id", "url": "https://www.rfc-editor.org/rfc/rfc9106.txt" },
+        { "name": "RFC 7914 — scrypt", "url": "https://www.rfc-editor.org/rfc/rfc7914.txt" },
+        { "name": "OWASP — Password Storage Cheat Sheet", "url": "https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html" }
+      ],
+      "text": "Una funzione hash crittografica trasforma dati di lunghezza arbitraria in un digest di lunghezza fissa (NIST FIPS 180-4). È deterministica. Le proprietà richieste sono collision resistance (è computazionalmente infattibile trovare due input diversi con lo stesso digest), preimage resistance (dato un digest non si trova un input che lo produca) e second preimage resistance (dato un input non se ne trova un altro con lo stesso digest). Il digest serve a rilevare modifiche dei dati: è integrità, non riservatezza. L'hash non è cifratura: è one-way e non si 'decifra'.\n\nHMAC (RFC 2104, sezione 2) combina una funzione hash con una chiave segreta condivisa: H(K XOR opad, H(K XOR ipad, testo)), con ipad = 0x36 e opad = 0x5C. Fornisce integrità e autenticazione di messaggio, non solo rilevamento di modifiche casuali.\n\nPer memorizzare password non usare hash generali veloci come SHA-256: consentono troppi tentativi al secondo. Servono sale unica e casuale per password e funzioni adattive o memory-hard. Argon2id è la variante primaria di RFC 9106; scrypt (RFC 7914) è un'alternativa; bcrypt è una scelta storica con limite di 72 byte e work factor almeno 10. OWASP raccomanda Argon2id come prima scelta, con parametri adattati al contesto."
     },
     {
       "id": "concept-symmetric",
-      "title": "Crittografia simmetrica",
-      "category": "Crypto",
-      "tags": ["cifratura", "chiave", "simmetrica", "confidenzialita"],
-      "text": "Nella crittografia simmetrica la stessa chiave serve sia per cifrare sia per decifrare. La sicurezza dipende dalla segretezza della chiave e dal modo in cui la chiave viene gestita, non dall'algoritmo tenuto segreto. Il testo cifrato dovrebbe apparire privo di struttura riconoscibile. Concetti correlati sono le modalità di operazione, vettore di inizializzazione e autenticazione dei dati cifrati."
+      "title": "Crittografia simmetrica e AEAD",
+      "category": "Crittografia",
+      "tags": ["cifratura", "chiave", "simmetrica", "confidenzialita", "aead"],
+      "topics": ["cifratura simmetrica", "AEAD", "nonce", "modalità di operazione"],
+      "keywords": ["chiave", "confidenzialita", "integrita", "autenticazione", "tls"],
+      "source": "RFC 5116 — An Interface and Algorithms for Authenticated Encryption",
+      "url": "https://www.rfc-editor.org/rfc/rfc5116.txt",
+      "verifiedAt": "2026-11-26",
+      "text": "Nella crittografia simmetrica la stessa chiave serve sia per cifrare sia per decifrare. La sicurezza dipende dalla segretezza della chiave e dalla sua gestione, non dal mantenere segreto l'algoritmo. Il testo cifrato non deve mostrare strutture riconoscibili.\n\nAEAD (RFC 5116, sezioni 1-3.1) combina cifratura e autenticazione: garantisce confidenzialità del testo in chiaro e verifica integrità e autenticità, inclusi i dati associati. Ogni invocazione deve usare un nonce distinto con la stessa chiave. TLS 1.3 ammette solo algoritmi simmetrici AEAD (RFC 8446, sezione 1.2). Vettore di inizializzazione, modalità di operazione e derivazione delle chiavi sono parti distinte del progetto di un protocollo."
     },
     {
       "id": "concept-asymmetric",
-      "title": "Crittografia asimmetrica",
-      "category": "Crypto",
-      "tags": ["chiave pubblica", "chiave privata", "firma", "RSA"],
-      "text": "La crittografia asimmetrica usa una coppia di chiavi: una pubblica e una privata. Ciò che viene cifrato con la chiave pubblica può essere decifrato solo con la privata; la firma digitale usa il processo inverso per dimostrare l'origine di un messaggio. È alla base di protocolli di scambio di chiavi e di certificati. La lunghezza delle chiavi e la gestione della fiducia sono parte del modello di sicurezza."
+      "title": "Crittografia asimmetrica, firme e catena di fiducia",
+      "category": "Crittografia",
+      "tags": ["chiave pubblica", "chiave privata", "firma", "rsa", "pki", "certificato"],
+      "topics": ["crittografia asimmetrica", "firma digitale", "PKI", "X.509"],
+      "keywords": ["rsa", "certificato", "autorita di certificazione", "trust store", "forward secrecy"],
+      "source": "RFC 5280 — Internet X.509 Public Key Infrastructure Certificate and CRL Profile",
+      "url": "https://www.rfc-editor.org/rfc/rfc5280.txt",
+      "verifiedAt": "2026-11-26",
+      "references": [
+        { "name": "RFC 8446 — TLS 1.3, sezioni 1.2 e Appendix E.8", "url": "https://www.rfc-editor.org/rfc/rfc8446.txt" }
+      ],
+      "text": "La crittografia asimmetrica usa una coppia di chiavi: una pubblica e una privata. Ciò che viene cifrato con la chiave pubblica può essere decifrato solo con la privata; la firma digitale usa il processo inverso per dimostrare origine e integrità di un messaggio. RSA e le curve ellittiche sono famiglie di algoritmi diversi, con diverse considerazioni su lunghezza delle chiavi e prestazioni.\n\nNella PKI un certificato X.509 lega una chiave pubblica a un soggetto e il legame è affermato dalla firma digitale di un'autorità di certificazione (RFC 5280, sezione 3.1). Il client parte da un insieme limitato di radici fidate e costruisce un percorso di certificazione fino al certificato del server (sezioni 3.2 e 6).\n\nStoricamente TLS 1.2 poteva trasportare un Pre-Master Secret cifrato con RSA. TLS 1.3 ha rimosso gli scambi statici RSA e Diffie-Hellman: tutti i meccanismi a chiave pubblica offrono forward secrecy, e lo scambio RSA della Pre-Master Secret non è più usato (RFC 8446, sezioni 1.2 e Appendix E.8)."
     },
     {
       "id": "concept-http",
-      "title": "Protocollo HTTP",
-      "category": "Web",
-      "tags": ["http", "https", "metodi", "header", "status"],
-      "text": "HTTP è un protocollo request-response: un client invia una richiesta con metodo, percorso, intestazioni e corpo; un server risponde con un codice di stato, intestazioni e corpo. HTTPS aggiunge una sessione cifrata e l'autenticazione del server tramite TLS. Le intestazioni descrivono metadati della transazione, come tipo di contenuto, cache e negoziazione. I codici di stato indicano se la richiesta è riuscita o perché non è stata soddisfatta."
+      "title": "HTTP, HTTPS e handshake TLS 1.2 / TLS 1.3",
+      "category": "Web security",
+      "tags": ["http", "https", "tls", "ssl", "handshake", "certificati", "hkdf", "metodi", "header", "status"],
+      "topics": ["HTTP", "HTTPS", "TLS 1.2", "TLS 1.3", "SSL", "HKDF", "Diffie-Hellman effimero"],
+      "keywords": ["pre-master secret", "rsa", "ecdhe", "dhe", "hkdf", "aead", "certificato", "pki", "forward secrecy"],
+      "source": "RFC 8446 — The Transport Layer Security (TLS) Protocol Version 1.3; RFC 5246 — TLS 1.2; RFC 7568 — SSLv3 deprecated",
+      "url": "https://www.rfc-editor.org/rfc/rfc8446.txt",
+      "verifiedAt": "2026-11-26",
+      "references": [
+        { "name": "RFC 5246 — TLS 1.2, sezioni 7.3, 8.1 e 8.1.1", "url": "https://www.rfc-editor.org/rfc/rfc5246.txt" },
+        { "name": "RFC 7568 — SSLv3 MUST NOT be used", "url": "https://www.rfc-editor.org/rfc/rfc7568.txt" },
+        { "name": "RFC 5869 — HKDF", "url": "https://www.rfc-editor.org/rfc/rfc5869.txt" }
+      ],
+      "text": "HTTP è un protocollo request-response: il client invia metodo, percorso, intestazioni e corpo; il server risponde con codice di stato, intestazioni e corpo. HTTPS è HTTP su una sessione TLS cifrata, con autenticazione del server tramite certificato.\n\nSSL è la denominazione storica: SSLv3 è stato sostituito nel 1999 e non deve più essere negoziato (RFC 7568). In TLS 1.2 (RFC 5246, sezioni 7.3 e 8.1) l'handshake accorda parametri e genera il master secret da un premaster secret e dai random di client e server; il premaster può essere inviato cifrato con RSA (sezione 8.1.1) oppure ricavato da parametri Diffie-Hellman (sezione 8.1.2).\n\nIn TLS 1.3 (RFC 8446, sezioni 1.2, 2, 4.2.8 e 7.1) gli scambi a chiave pubblica sono (EC)DHE, PSK-only o PSK con (EC)DHE. Lo scambio RSA della Pre-Master Secret NON fa parte di TLS 1.3: le chiavi derivano da Diffie-Hellman effimero e dal key schedule basato su HKDF (RFC 5869). Le suite statiche RSA e Diffie-Hellman sono state rimosse e tutti gli scambi offrono forward secrecy. La cifratura dei record usa solo AEAD. Restano distinti i ruoli di negoziazione, autenticazione del certificato, scambio di chiavi e derivazione delle chiavi di sessione."
     },
     {
       "id": "concept-cookie",
-      "title": "Cookie e sessioni",
-      "category": "Web",
-      "tags": ["cookie", "sessione", "autenticazione", "attributi"],
-      "text": "Un cookie è un piccolo dato che il server invia al browser e che il browser rimanda nelle richieste successive. Serve a mantenere stato in un protocollo senza stato come HTTP. Le sessioni sono registrate server-side e spesso identificate da un cookie opaco. Gli attributi HttpOnly, Secure e SameSite limitano la portata di un cookie. La gestione della scadenza e della rotazione degli identificatori è parte della progettazione dell'autenticazione."
+      "title": "Cookie, sessioni e CSRF",
+      "category": "Web security",
+      "tags": ["cookie", "sessione", "autenticazione", "csrf", "samesite", "httponly"],
+      "topics": ["cookie", "sessioni", "CSRF", "SameSite"],
+      "keywords": ["sessione", "token", "httponly", "secure", "origin", "referer", "xss"],
+      "source": "OWASP — Cross-Site Request Forgery Prevention Cheat Sheet",
+      "url": "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html",
+      "verifiedAt": "2026-11-26",
+      "text": "Un cookie è un piccolo dato che il server invia al browser e che il browser rimanda nelle richieste successive: serve a mantenere stato in HTTP, che è senza stato. Le sessioni spesso sono registrate lato server e identificate da un cookie opaco. Gli attributi HttpOnly, Secure e SameSite limitano la portata di un cookie; scadenza e rotazione dell'identificatore fanno parte della progettazione dell'autenticazione.\n\nLa Cross-Site Request Forgery (CSRF) induce il browser di un utente autenticato a compiere un'azione non voluta su un sito fidato, sfruttando l'invio automatico dei cookie. Le mitigazioni documentate da OWASP sono: usare la protezione integrata nel framework, token CSRF imprevedibili e unici per sessione validati lato server, Signed Double-Submit Cookie per applicazioni stateless, intestazioni Fetch Metadata come Sec-Fetch-Site, controlli di Origin/Referer e SameSite come difesa in profondità. Le operazioni che modificano stato non dovrebbero usare GET. Un difetto XSS può vanificare tutte le mitigazioni CSRF."
     },
     {
       "id": "concept-url-encoding",
       "title": "URL e codifica percentuale",
-      "category": "Web",
+      "category": "Web security",
       "tags": ["url", "query", "parametri", "percent-encoding"],
-      "text": "Un URL identifica una risorsa e può contenere un percorso, parametri di query e un frammento. I parametri di query sono coppie chiave-valore separate da delimitatori. La codifica percentuale rappresenta caratteri non ammessi o ambigui con il formato percentuale UTF-8. Interpretare correttamente la differenza tra valore letterale e valore decodificato è importante per capire come un server riceve i dati."
+      "topics": ["URL", "query string", "codifica percentuale"],
+      "keywords": ["parametri", "frammento", "utf-8", "decodifica"],
+      "source": "Sintesi didattica originale OliDuck",
+      "url": null,
+      "verifiedAt": "2026-11-26",
+      "text": "Un URL identifica una risorsa e può contenere schema, host, percorso, parametri di query e frammento. I parametri di query sono coppie chiave-valore separate da delimitatori. La codifica percentuale rappresenta caratteri non ammessi o ambigui con sequenze '%' seguite da due cifre esadecimali, normalmente byte UTF-8. Interpretare correttamente la differenza tra valore letterale e valore decodificato è importante per capire come un server riceve i dati. La codifica da sola non è una difesa: ogni contesto di interpretazione ha regole proprie."
     },
     {
       "id": "concept-binary",
       "title": "Dati binari e byte",
-      "category": "Binary",
-      "tags": ["byte", "binario", "esadecimale", "ascii"],
-      "text": "Un byte è un gruppo di otto bit e può rappresentare un numero da 0 a 255. La notazione esadecimale è un modo compatto per scrivere sequenze di byte. La stessa sequenza può assumere significati diversi a seconda che venga interpretata come testo, numero o struttura dati. Per questo la rappresentazione dei dati e la codifica dei caratteri sono concetti distinti."
+      "category": "Programmazione e scripting",
+      "tags": ["byte", "binario", "esadecimale", "ascii", "scripting"],
+      "topics": ["byte", "notazione esadecimale", "rappresentazione dei dati"],
+      "keywords": ["bit", "0x", "ascii", "interi", "script"],
+      "source": "Sintesi didattica originale OliDuck",
+      "url": null,
+      "verifiedAt": "2026-11-26",
+      "text": "Un byte è un gruppo di otto bit e può rappresentare un valore da 0 a 255. La notazione esadecimale è un modo compatto per scrivere sequenze di byte, con due cifre per byte. La stessa sequenza può assumere significati diversi a seconda che venga interpretata come testo, intero con o senza segno, o struttura dati. Per questo la rappresentazione dei dati e la codifica dei caratteri sono concetti distinti. In uno script, convertire tra stream di byte e testo esplicita sempre la codifica usata."
     },
     {
       "id": "concept-endian",
       "title": "Ordine dei byte",
-      "category": "Binary",
+      "category": "Programmazione e scripting",
       "tags": ["endian", "little endian", "big endian", "formati"],
-      "text": "L'ordine dei byte, o endianness, descrive come un numero multi-byte viene scritto in memoria o in un file. In little endian il byte meno significativo viene prima; in big endian viene prima quello più significativo. I formati di file e i protocolli di rete definiscono l'ordine atteso. Un errore di interpretazione produce valori diversi pur leggendo gli stessi byte."
+      "topics": ["endianness", "little endian", "big endian"],
+      "keywords": ["byte order", "rete", "formato file", "interi"],
+      "source": "Sintesi didattica originale OliDuck",
+      "url": null,
+      "verifiedAt": "2026-11-26",
+      "text": "L'ordine dei byte, o endianness, descrive come un numero multi-byte viene scritto in memoria o in un file. In little endian il byte meno significativo viene prima; in big endian viene prima quello più significativo. Molti formati di file e protocolli di rete definiscono esplicitamente l'ordine atteso. Un errore di interpretazione produce valori diversi pur leggendo esattamente gli stessi byte; per questo gli script di analisi dichiarano l'ordine quando leggono interi binari."
     },
     {
       "id": "concept-tcpip",
       "title": "Modello TCP/IP e porte",
-      "category": "Network",
+      "category": "Networking e protocolli",
       "tags": ["tcp", "udp", "ip", "porte", "protocolli"],
-      "text": "TCP offre un flusso ordinato e affidabile tra due endpoint; UDP offre datagrammi senza garanzia di consegna. Indirizzi IP e porte identificano rispettivamente un host e un servizio su quell'host. Incapsulamento significa che ogni livello aggiunge le proprie intestazioni ai dati del livello superiore. Comprendere il modello a livelli aiuta a separare indirizzamento, trasporto e applicazione."
+      "topics": ["TCP/IP", "porte", "incapsulamento"],
+      "keywords": ["tcp", "udp", "ip", "socket", "rete"],
+      "source": "Sintesi didattica originale OliDuck",
+      "url": null,
+      "verifiedAt": "2026-11-26",
+      "text": "TCP offre un flusso ordinato e affidabile tra due endpoint, con ritrasmissione e controllo della congestione; UDP offre datagrammi senza garanzia di consegna. Indirizzi IP e porte identificano rispettivamente un host e un servizio su quell'host. L'incapsulamento significa che ogni livello aggiunge le proprie intestazioni ai dati del livello superiore. Comprendere il modello a livelli aiuta a separare indirizzamento, trasporto, scambio di chiavi e applicazione: ad esempio TLS opera sopra TCP e sotto HTTP."
     },
     {
       "id": "concept-dns",
       "title": "Risoluzione dei nomi DNS",
-      "category": "Network",
+      "category": "Networking e protocolli",
       "tags": ["dns", "dominio", "record", "risoluzione"],
-      "text": "Il DNS traduce nomi di dominio in indirizzi IP e conserva altri tipi di informazioni associati a un dominio. La risoluzione coinvolge più livelli di cache e server autoritativi. I record hanno tipi diversi, ciascuno con uno scopo specifico. Una risposta DNS è un dato fornito dal servizio di risoluzione e va distinta dalla configurazione locale del dispositivo."
+      "topics": ["DNS", "record DNS", "risoluzione dei nomi"],
+      "keywords": ["A", "AAAA", "CNAME", "MX", "TXT", "cache", "TTL"],
+      "source": "Sintesi didattica originale OliDuck",
+      "url": null,
+      "verifiedAt": "2026-11-26",
+      "text": "Il DNS traduce nomi di dominio in indirizzi IP e conserva altri tipi di informazioni associate a un dominio. I tipi di record più comuni sono A, AAAA, CNAME, MX e TXT. La risoluzione coinvolge resolver ricorsivi, server autoritativi e più livelli di cache con scadenza TTL. Una risposta DNS è un dato fornito dal servizio di risoluzione: va distinta dalla configurazione locale del dispositivo e non costituisce di per sé una garanzia di identità o fiducia."
     },
     {
       "id": "concept-traffic",
       "title": "Analisi del traffico di rete",
-      "category": "Network",
-      "tags": ["pcap", "pacchetti", "sniffing", "cattura"],
-      "text": "Una cattura di rete registra i pacchetti osservati su un'interfaccia. Ogni pacchetto contiene intestazioni di livello e un contenuto dati, che può essere cifrato o in chiaro a seconda del protocollo. Leggere una cattura significa ricostruere conversazioni a partire da stream e da metadati temporali. La disponibilità dei dati dipende da dove la cattura è stata effettuata e da quali protocolli sono stati usati."
+      "category": "Networking e protocolli",
+      "tags": ["pcap", "pacchetti", "cattura", "sniffing"],
+      "topics": ["cattura di pacchetti", "analisi del traffico"],
+      "keywords": ["pcap", "stream", "timestamp", "cifrato", "chiaro"],
+      "source": "Sintesi didattica originale OliDuck",
+      "url": null,
+      "verifiedAt": "2026-11-26",
+      "text": "Una cattura di rete registra i pacchetti osservati su un'interfaccia. Ogni pacchetto contiene intestazioni di livello e un contenuto dati, che può essere cifrato o in chiaro a seconda del protocollo. Leggere una cattura significa ricostruire conversazioni a partire da stream, indirizzi e metadati temporali. La disponibilità dei dati dipende da dove la cattura è stata effettuata e da quali protocolli sono stati usati: con HTTPS, ad esempio, il contenuto applicativo non è leggibile senza le chiavi di sessione."
     },
     {
       "id": "concept-memory",
-      "title": "Memoria di un processo",
-      "category": "Pwn",
-      "tags": ["processo", "memoria", "stack", "heap"],
-      "text": "Un processo ha uno spazio di indirizzamento virtuale con regioni distinte, tra cui codice, dati, stack e heap. Lo stack cresce e si riduce con le chiamate di funzione; l'heap è usato per allocazioni dinamiche. I meccanismi di protezione moderni limitano l'esecuzione di alcune regioni e casualizzano gli indirizzi. Il modello di memoria è un concetto teorico, indipendente da qualsiasi tecnica di sfruttamento."
+      "title": "Processi Linux, permessi e memoria",
+      "category": "Linux",
+      "tags": ["linux", "processo", "memoria", "stack", "heap", "permessi", "shell"],
+      "topics": ["Linux", "processi", "spazio di indirizzamento", "permessi file"],
+      "keywords": ["shell", "utente", "gruppo", "stack", "heap", "aslr", "nx"],
+      "source": "Sintesi didattica originale OliDuck",
+      "url": null,
+      "verifiedAt": "2026-11-26",
+      "text": "In Linux ogni processo ha uno spazio di indirizzamento virtuale con regioni distinte: codice, dati, stack e heap. Lo stack cresce e si riduce con le chiamate di funzione; l'heap è usato per allocazioni dinamiche. Ogni processo opera con un utente e un gruppo, quindi con permessi specifici su file e risorse; la shell espone variabili d'ambiente e comandi come interfaccia. /proc espone informazioni di processo come file di testo. I meccanismi di protezione moderni limitano l'esecuzione di alcune regioni e casualizzano gli indirizzi. Il modello di memoria e di permessi è un concetto teorico, indipendente da qualunque tecnica operativa."
     },
     {
       "id": "concept-vulnerability",
-      "title": "Classi di vulnerabilità",
-      "category": "Pwn",
-      "tags": ["vulnerabilita", "input", "validazione", "sicurezza"],
-      "text": "Una vulnerabilità è una debolezza che può portare a un comportamento non inteso dal progettista. Classi comuni riguardano la validazione dell'input, la gestione della memoria, i controlli di accesso e la configurazione. La severità dipende dal contesto in cui la debolezza si trova e dalle difese presenti. Studiare la classe di un problema aiuta a ragionare in termini di modello di sicurezza, non di procedure operative."
+      "title": "Classi di vulnerabilità e modello di sicurezza",
+      "category": "Sicurezza generale",
+      "tags": ["vulnerabilita", "input", "validazione", "sicurezza", "rischio"],
+      "topics": ["vulnerabilità", "validazione dell'input", "controllo degli accessi"],
+      "keywords": ["minaccia", "rischio", "difesa", "configurazione", "autorizzazione"],
+      "source": "Sintesi didattica originale OliDuck",
+      "url": null,
+      "verifiedAt": "2026-11-26",
+      "text": "Una vulnerabilità è una debolezza che può portare a un comportamento non inteso dal progettista; è diversa da una minaccia, che è un evento potenzialmente dannoso. Classi comuni riguardano validazione dell'input, gestione della memoria, controlli di accesso e configurazione. La severità dipende dal contesto in cui la debolezza si trova e dalle difese presenti, non solo da un punteggio astratto. Studiare la classe di un problema aiuta a ragionare in termini di modello di sicurezza, confidenza, integrità e disponibilità, invece di cercare una sequenza di passi da ripetere."
     },
     {
       "id": "concept-osint",
       "title": "OSINT e fonti pubbliche",
-      "category": "OSINT",
+      "category": "Sicurezza generale",
       "tags": ["osint", "fonti pubbliche", "verifica", "provenienza"],
-      "text": "OSINT indica l'attività di raccolta e analisi di informazioni da fonti pubbliche. La qualità di una fonte dipende dalla sua provenienza, dalla data e dalla possibilità di verificarla con fonti indipendenti. Metadati e indizi contestuali possono essere fuorvianti se letti senza contesto. La distinzione tra informazione verificata e deduzione è parte del metodo di analisi."
+      "topics": ["OSINT", "provenienza", "verifica delle fonti"],
+      "keywords": ["pubblico", "licenza", "data", "metadati", "deduzione"],
+      "source": "Sintesi didattica originale OliDuck",
+      "url": null,
+      "verifiedAt": "2026-11-26",
+      "text": "OSINT indica la raccolta e l'analisi di informazioni da fonti pubbliche. La qualità di una fonte dipende dalla provenienza, dalla data e dalla possibilità di verificarla con fonti indipendenti. Metadati e indizi contestuali possono essere fuorvianti se letti senza contesto. Distinguere informazione verificata, informazione storica, deduzione e ipotesi è parte del metodo di analisi. L'accesso pubblico a una pagina non implica automaticamente il diritto di riutilizzarne il contenuto: licenze e condizioni vanno controllate separatamente."
     },
     {
       "id": "concept-reverse",
       "title": "Analisi statica e dinamica",
-      "category": "Reverse",
-      "tags": ["reverse", "disassembly", "binario", "debug"],
-      "text": "L'analisi statica esamina un artefatto senza eseguirlo, ad esempio leggendo la struttura di un file o le istruzioni disassemblate. L'analisi dinamica osserva il comportamento durante l'esecuzione in un ambiente controllato. Le due prospettive sono complementari: la prima mostra cosa è presente, la seconda cosa accade. Simboli e informazioni di debug possono essere assenti, quindi parte dell'analisi è ricostruire il contesto."
+      "category": "Programmazione e scripting",
+      "tags": ["reverse", "disassembly", "binario", "debug", "statica", "dinamica"],
+      "topics": ["analisi statica", "analisi dinamica", "disassemblaggio"],
+      "keywords": ["debugger", "simboli", "istruzioni", "artefatto"],
+      "source": "Sintesi didattica originale OliDuck",
+      "url": null,
+      "verifiedAt": "2026-11-26",
+      "text": "L'analisi statica esamina un artefatto senza eseguirlo, ad esempio leggendo la struttura di un file o le istruzioni disassemblate. L'analisi dinamica osserva il comportamento durante l'esecuzione in un ambiente controllato. Le due prospettive sono complementari: la prima mostra cosa è presente, la seconda cosa accade. Simboli e informazioni di debug possono essere assenti, quindi parte dell'analisi consiste nel ricostruire il contesto da strutture e convenzioni note."
     },
     {
       "id": "concept-forensics",
       "title": "Forensica digitale",
-      "category": "Forensics",
+      "category": "Digital forensics",
       "tags": ["forensica", "evidenze", "metadati", "catena di custodia"],
-      "text": "La forensica digitale si occupa di acquisire, preservare e interpretare evidenze informatiche. La catena di custodia documenta come un artefatto è stato raccolto e conservato. Metadati, timestamp e residui di filesystem sono indizi che vanno interpretati con cautela, perché possono essere alterati. La ripetibilità dell'analisi e la distinzione tra osservazione e ipotesi sono principi fondamentali."
+      "topics": ["forensica digitale", "catena di custodia", "metadati"],
+      "keywords": ["timestamp", "filesystem", "acquisizione", "ripetibilita"],
+      "source": "Sintesi didattica originale OliDuck",
+      "url": null,
+      "verifiedAt": "2026-11-26",
+      "text": "La forensica digitale si occupa di acquisire, preservare e interpretare evidenze informatiche. La catena di custodia documenta come un artefatto è stato raccolto e conservato, così da poter ripetere l'analisi. Metadati, timestamp e residui di filesystem sono indizi da interpretare con cautela, perché possono essere alterati o essere ambigui. La ripetibilità dell'analisi e la distinzione tra osservazione e ipotesi sono principi fondamentali: un'indizio non è di per sé una conclusione."
     },
     {
       "id": "concept-regex",
       "title": "Espressioni regolari",
-      "category": "Misc",
-      "tags": ["regex", "pattern", "testo", "ricerca"],
-      "text": "Un'espressione regolare descrive un insieme di stringhe tramite un pattern. È uno strumento per cercare, validare o suddividere testo. I quantificatori, le classi di caratteri e i gruppi definiscono la struttura del pattern. La semantica può variare leggermente tra motori diversi, quindi il contesto di utilizzo è rilevante per interpretare un risultato."
+      "category": "Programmazione e scripting",
+      "tags": ["regex", "pattern", "testo", "ricerca", "scripting"],
+      "topics": ["espressioni regolari", "pattern", "ricerca nel testo"],
+      "keywords": ["quantificatori", "gruppi", "classi", "validazione"],
+      "source": "Sintesi didattica originale OliDuck",
+      "url": null,
+      "verifiedAt": "2026-11-26",
+      "text": "Un'espressione regolare descrive un insieme di stringhe tramite un pattern. È uno strumento per cercare, validare o suddividere testo, ed è disponibile in quasi tutti i linguaggi di scripting. Quantificatori, classi di caratteri, ancoraggi e gruppi definiscono la struttura del match. La semantica può variare tra motori diversi, quindi il contesto di utilizzo è rilevante per interpretare un risultato. Pattern con annidamenti ambigui possono richiedere tempo in modo imprevisto: la semplicità è una qualità."
     },
     {
       "id": "concept-stego",
       "title": "Steganografia",
-      "category": "Forensics",
+      "category": "Digital forensics",
       "tags": ["steganografia", "media", "metadati", "nascondere"],
-      "text": "La steganografia cerca di nascondere l'esistenza stessa di un messaggio all'interno di un altro contenuto, come un'immagine o un file audio. Si distingue dalla cifratura, che rende illeggibile un messaggio senza nasconderne la presenza. La capacità di un supporto e le modifiche introdotte sono limiti importanti. L'assenza di un segnale evidente non dimostra che un contenuto non trasporti dati nascosti."
+      "topics": ["steganografia", "dati nascosti", "metadati"],
+      "keywords": ["immagine", "audio", "capacita", "cifratura"],
+      "source": "Sintesi didattica originale OliDuck",
+      "url": null,
+      "verifiedAt": "2026-11-26",
+      "text": "La steganografia cerca di nascondere l'esistenza stessa di un messaggio dentro un altro contenuto, come un'immagine o un file audio. Si distingue dalla cifratura, che rende illeggibile un messaggio senza nasconderne la presenza. Capacità del supporto e modifiche introdotte sono limiti importanti. L'assenza di un segnale evidente non dimostra che un contenuto non trasporti dati nascosti; per questo in forensica si confrontano struttura, metadati e ridondanze attese."
     },
     {
       "id": "concept-terminology",
-      "title": "Terminologia di sicurezza",
-      "category": "Cybersecurity",
-      "tags": ["minaccia", "difesa", "superficie d attacco", "principio del minimo privilegio"],
-      "text": "Una minaccia è un evento potenzialmente dannoso; una vulnerabilità è una debolezza; un attacco è l'azione che sfrutta una debolezza. La superficie d'attacco è l'insieme dei punti attraverso cui un sistema può ricevere input. Il principio del minimo privilegio limita i permessi al solo necessario. Difesa in profondità significa combinare più livelli di controllo invece di affidarsi a una sola barriera."
+      "title": "Terminologia di sicurezza e principi fondamentali",
+      "category": "Sicurezza generale",
+      "tags": ["minaccia", "difesa", "superficie d attacco", "minimo privilegio", "cifratura"],
+      "topics": ["minaccia", "vulnerabilità", "attacco", "principi di sicurezza"],
+      "keywords": ["minimo privilegio", "difesa in profondita", "confidenzialita", "integrita", "disponibilita"],
+      "source": "Sintesi didattica originale OliDuck",
+      "url": null,
+      "verifiedAt": "2026-11-26",
+      "text": "Una minaccia è un evento potenzialmente dannoso; una vulnerabilità è una debolezza; un attacco è l'azione che sfrutta una debolezza. La superficie d'attacco è l'insieme dei punti attraverso cui un sistema può ricevere input. Il principio del minimo privilegio limita i permessi al solo necessario. Difesa in profondità significa combinare più livelli di controllo invece di affidarsi a una sola barriera. Autenticazione e autorizzazione sono fasi distinte; confidenzialità, integrità e disponibilità sono le tre proprietà classiche da proteggere."
     }
   ]
 }

@@ -1,10 +1,12 @@
 import { parseChatRequest, MAX_BODY_BYTES } from '../lib/validate.js';
 import {
   buildMessages, redactOutput, detectSolutionRequest, outputLooksUnsafe,
+  classifyIntent, INTENTS, isSolutionRequest, hintStageFor, isPersonalContext,
+  buildDeliveryStatus,
 } from '../lib/system-prompt.js';
 import { demoReply } from '../lib/demo.js';
 import { createRateLimiter } from '../lib/rate-limit.js';
-import { toPromptContexts } from '../lib/catalog.js';
+import { CATALOG_META, toPromptContexts } from '../lib/catalog.js';
 import { DEFAULT_MODEL } from '../lib/model.js';
 import {
   retrieveKnowledge, knowledgeContext, publicKnowledgeSources,
@@ -22,6 +24,38 @@ const SAFETY_TAIL_CHARS = 64;
 const SOLUTION_REFUSAL = 'Non posso fornire flag, soluzioni, writeup o payload per completare una challenge. '
   + 'Posso aiutarti a capire i concetti coinvolti, a formulare una prima ipotesi e a verificare il tuo ragionamento: '
   + 'dimmi cosa hai capito finora oppure chiedimi una spiegazione teorica dell’argomento.';
+
+const CLARIFICATION_REPLY = 'Non sono sicuro di cosa ti serva. Dimmi se vuoi: '
+  + 'una spiegazione teorica di un concetto, un aiuto per capire la consegna, '
+  + 'un primo suggerimento oppure una verifica del tuo ragionamento.';
+
+// La consegna originale non è nel catalogo del tutor: l'unica fonte possibile è
+// l'estratto incollato dallo studente. Senza estratto non va inventata.
+const STATEMENT_UNAVAILABLE_REPLY = 'Non ho il testo della consegna: nel catalogo del tutor sono disponibili solo metadati come titolo e categoria. '
+  + 'Incolla un estratto della consegna e te lo spiegherò in linguaggio semplice, distinguendo obiettivo, dati disponibili e vincoli. '
+  + 'Non deduco obiettivi dal solo titolo.';
+
+const PERSONAL_REPLY = 'Mi dispiace davvero: quando le cose si accumulano è normale sentirsi sopraffatti. '
+  + 'Non devi forzarti: puoi lasciare la challenge da parte e riprendere quando ti va. '
+  + 'Se più tardi vorrai tornarci, potrò aiutarti a capire il testo o a ragionare sul tuo approccio, con calma.';
+
+const SOLUTION_REFUSALS = Object.freeze([
+  SOLUTION_REFUSAL,
+  'Non posso fornire flag, soluzioni, writeup o payload per completare una challenge. '
+    + 'Anche se la richiesta torna più volte, il limite resta lo stesso. '
+    + 'Scegli tra: spiegazione del concetto, lettura guidata di un estratto che incolli, verifica del tuo ragionamento.',
+  'Non posso fornire flag, soluzioni, writeup o payload per completare una challenge. '
+    + 'Non cambio le regole in base all’insistenza. '
+    + 'Posso aiutarti a separare ciò che è noto da ciò che manca e a formulare una prima ipotesi: dimmi quale passaggio vuoi capire.',
+]);
+
+/** Cambia formulazione senza cambiare il livello di protezione. */
+function solutionRefusal(history = [], message = '') {
+  const repeated = history.filter((item) => item?.role === 'user' && isSolutionRequest(item.content)).length
+    + (isSolutionRequest(message) ? 1 : 0);
+  const index = Math.min(SOLUTION_REFUSALS.length - 1, Math.max(0, repeated - 1));
+  return SOLUTION_REFUSALS[index];
+}
 
 class BodyTooLargeError extends Error {}
 
@@ -193,7 +227,7 @@ function sseResponse(stream) {
  * cumulativo e autorevole: il client lo sostituisce, quindi un rifiuto
  * sopraggiunto può annullare il testo parziale già inviato.
  */
-function createAiEventStream(source, meta, deadline) {
+function createAiEventStream(source, meta, deadline, refusal = SOLUTION_REFUSAL) {
   let reader;
   try {
     reader = source.getReader();
@@ -266,7 +300,7 @@ function createAiEventStream(source, meta, deadline) {
           if (providerBuffer.trim()) processLine(providerBuffer);
         }
         if (stopped || outputLooksUnsafe(rawReply)) {
-          emit({ ...meta, reply: SOLUTION_REFUSAL, blocked: true });
+          emit({ ...meta, reply: refusal, blocked: true });
         } else {
           const cleaned = redactOutput(rawReply);
           if (!cleaned) {
@@ -334,7 +368,7 @@ export async function onRequestPost({ request, env }) {
 
   const parsed = parseChatRequest(rawBody);
   if (!parsed.ok) return json({ error: parsed.error }, 400);
-  const { message, challengeIds, history } = parsed.value;
+  const { message, challengeIds, history, statementExcerpt } = parsed.value;
 
   // Il client invia solo ID: tutti i metadati arrivano dal catalogo server.
   const challenges = toPromptContexts(challengeIds);
@@ -343,16 +377,51 @@ export async function onRequestPost({ request, env }) {
   const model = configuredModel(env);
   const mode = env.AI ? 'ai' : 'demo';
   const primaryId = challengeIds[0] || 'general';
+  const intent = classifyIntent(message);
+  const personalContext = isPersonalContext(message);
+  const hintStage = intent === INTENTS.REQUEST_HINT ? hintStageFor(history, message) : null;
+  const refusal = solutionRefusal(history, message);
+  // Il timeout copre anche l'avvio dello stream, non solo la lettura dei chunk.
+  const deadline = Date.now() + AI_TIMEOUT_MS;
+  const catalogVerified = Boolean(CATALOG_META.source?.verified);
+  const delivery = buildDeliveryStatus({ statementExcerpt, catalogVerified });
+  const contextMode = challengeIds.length === 0
+    ? 'general'
+    : (challengeIds.length === 1 ? 'single' : 'multi');
   const meta = {
     mode,
     model: env.AI ? model : null,
     challengeIds,
     challengeId: primaryId,
+    intent,
+    statementProvided: Boolean(statementExcerpt),
+    statementStatus: delivery.status,
+    catalogVerified,
+    contextMode,
+    challengeCount: challengeIds.length,
+    personalContext,
+    ...(hintStage ? { hintStage } : {}),
   };
 
   // Controllo deterministico sull'input: nessuna chiamata al modello.
-  if (detectSolutionRequest(message)) {
-    return json({ reply: SOLUTION_REFUSAL, ...meta, blocked: true, sources: [] });
+  // La manipolazione emotiva non può superare questo livello di protezione.
+  if (intent === INTENTS.REQUEST_SOLUTION || detectSolutionRequest(message)) {
+    return json({ reply: refusal, ...meta, blocked: true, sources: [] });
+  }
+  // Consegna richiesta senza testo disponibile: non inventare requisiti.
+  if (intent === INTENTS.EXPLAIN_STATEMENT && !statementExcerpt) {
+    return json({
+      reply: STATEMENT_UNAVAILABLE_REPLY, ...meta, needsClarification: true,
+      statementMissing: true, sources: [],
+    });
+  }
+  // Difficoltà personale senza richiesta didattica: risposta empatica, niente modello.
+  if (intent === INTENTS.CLARIFY && personalContext) {
+    return json({ reply: PERSONAL_REPLY, ...meta, support: true, sources: [] });
+  }
+  // Ambiguità: chiarire invece di bloccare una domanda didattica innocua.
+  if (intent === INTENTS.CLARIFY) {
+    return json({ reply: CLARIFICATION_REPLY, ...meta, needsClarification: true, sources: [] });
   }
 
   // Retrieval sempre lato server e solo sulla knowledge base didattica.
@@ -374,6 +443,11 @@ export async function onRequestPost({ request, env }) {
       challenges,
       history,
       message,
+      intent,
+      statementExcerpt,
+      hintStage,
+      personalContext,
+      delivery,
       knowledgeContext: knowledgeContext(sources),
     }),
     max_completion_tokens: MAX_COMPLETION_TOKENS,
@@ -384,7 +458,6 @@ export async function onRequestPost({ request, env }) {
     chat_template_kwargs: { enable_thinking: false },
   };
 
-  const deadline = Date.now() + AI_TIMEOUT_MS;
   let result;
   try {
     result = await withTimeout(
@@ -396,13 +469,13 @@ export async function onRequestPost({ request, env }) {
   }
 
   const source = isReadableStream(result) ? result : (isReadableStream(result?.body) ? result.body : null);
-  if (source) return createAiEventStream(source, meta, deadline);
+  if (source) return createAiEventStream(source, meta, deadline, refusal);
 
   // Fallback per binding/override che restituiscono comunque JSON sincrono.
   const rawReply = extractText(result);
   if (!rawReply) return json({ error: 'Il modello non ha restituito una risposta utilizzabile.' }, 502);
   if (outputLooksUnsafe(rawReply)) {
-    return json({ ...meta, reply: SOLUTION_REFUSAL, blocked: true });
+    return json({ ...meta, reply: refusal, blocked: true });
   }
   const reply = redactOutput(rawReply);
   if (!reply) return json({ error: 'Il modello non ha restituito una risposta utilizzabile.' }, 502);
