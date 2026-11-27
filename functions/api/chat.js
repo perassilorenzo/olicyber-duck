@@ -45,9 +45,12 @@ const REGENERATION_INSTRUCTION = '\n\nRIGENERAZIONE CONTROLLATA: la risposta pre
 
 // La consegna originale non è nel catalogo del tutor: l'unica fonte possibile è
 // l'estratto incollato dallo studente. Senza estratto non va inventata.
-const STATEMENT_UNAVAILABLE_REPLY = 'Non ho il testo della consegna: nel catalogo del tutor sono disponibili solo metadati come titolo e categoria. '
-  + 'Incolla un estratto della consegna e te lo spiegherò in linguaggio semplice, distinguendo obiettivo, dati disponibili e vincoli. '
-  + 'Non deduco obiettivi dal solo titolo.';
+const STATEMENT_UNAVAILABLE_REPLY = 'Non ho il testo della consegna nella conversazione corrente né tra gli estratti salvati. '
+  + 'Incolla un estratto qui e te lo spiegherò in linguaggio semplice, distinguendo obiettivo, dati disponibili e vincoli. '
+  + 'I metadati del catalogo (titolo, categoria, tag) non sostituiscono la consegna.';
+
+const STATEMENT_CHALLENGE_MISMATCH_REPLY = 'L’estratto che ho è associato a un’altra challenge: non posso usarlo come consegna di quella attuale. '
+  + 'Seleziona la challenge a cui appartiene il testo oppure incolla qui la consegna della challenge che stai lavorando.';
 
 const PERSONAL_REPLY = 'Mi dispiace davvero: quando le cose si accumulano è normale sentirsi sopraffatti. '
   + 'Non devi forzarti: puoi lasciare la challenge da parte e riprendere quando ti va. '
@@ -461,10 +464,16 @@ export async function onRequestPost({ request, env }) {
 
   const parsed = parseChatRequest(rawBody);
   if (!parsed.ok) return json({ error: parsed.error }, 400);
-  const { message, challengeIds, history, statementExcerpt: postedExcerpt } = parsed.value;
-  // La consegna può essere stata incollata nel campo dedicato oppure direttamente
-  // in chat: in entrambi i casi diventa contesto persistente della richiesta.
-  const statement = resolveStatement({ statementExcerpt: postedExcerpt, history, message });
+  const {
+    message, challengeIds, history,
+    statementExcerpt: postedExcerpt, statementChallengeIds,
+  } = parsed.value;
+  // La consegna può essere stata incollata nel campo dedicato, salvata nello
+  // stato della chat oppure incollata direttamente in chat: in ogni caso viene
+  // ritrovata e verificata rispetto alla challenge attiva.
+  const statement = resolveStatement({
+    statementExcerpt: postedExcerpt, statementChallengeIds, challengeIds, history, message,
+  });
   const statementExcerpt = statement.text;
 
   // Il client invia solo ID: tutti i metadati arrivano dal catalogo server.
@@ -474,7 +483,7 @@ export async function onRequestPost({ request, env }) {
   const model = configuredModel(env);
   const mode = env.AI ? 'ai' : 'demo';
   const primaryId = challengeIds[0] || 'general';
-  const statementOptions = { statementExcerpt };
+  const statementOptions = { statementExcerpt, statementChallengeIds, challengeIds };
   const state = conversationState(history, message, statementOptions);
   // Il contesto può reinterpretare un messaggio breve, ma non aggira il
   // rifiuto deterministico: la richiesta corrente viene sempre classificata.
@@ -499,6 +508,7 @@ export async function onRequestPost({ request, env }) {
     intent,
     statementProvided: Boolean(statementExcerpt),
     statementSource: statement.source,
+    statementChallengeMismatch: Boolean(statement.challengeMismatch),
     statementStatus: delivery.status,
     statementFromCurrentMessage: statement.fromCurrentMessage,
     catalogVerified,
@@ -518,6 +528,14 @@ export async function onRequestPost({ request, env }) {
   // La manipolazione emotiva non può superare questo livello di protezione.
   if (intent === INTENTS.REQUEST_SOLUTION || detectSolutionRequest(message)) {
     return json({ reply: refusal, ...meta, blocked: true, sources: [] });
+  }
+  // L'estratto salvato appartiene a un'altra challenge: non usarlo come se
+  // fosse la consegna corrente, né inventarne una dal titolo.
+  if (statement.challengeMismatch) {
+    return json({
+      reply: STATEMENT_CHALLENGE_MISMATCH_REPLY, ...meta,
+      needsClarification: true, statementMissing: true, sources: [],
+    });
   }
   // Consegna richiesta senza testo disponibile: non inventare requisiti.
   if (intent === INTENTS.EXPLAIN_STATEMENT && !statementExcerpt) {

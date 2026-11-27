@@ -31,29 +31,64 @@ export function looksLikeStatementPaste(value) {
   return hasTask && hasTech;
 }
 
+function idList(value) {
+  return Array.isArray(value) ? value.filter((id) => typeof id === 'string') : [];
+}
+
 /**
- * Risolve la consegna effective per la richiesta corrente.
- * La priorità è: campo dedicato, testo incollato nel messaggio corrente,
- * ultima consegna incollata nella cronologia.
+ * Risolve la consegna effettiva per la richiesta corrente.
+ * La priorità è: campo dedicato/estratto persistente, testo incollato nel
+ * messaggio corrente, consegna incollata nella cronologia (anche quella vecchia:
+ * una chat lunga non può fare perdere il contesto).
+ *
+ * `statementChallengeIds` è l'associazione dichiarata dal client: quando non
+ * coincide con le challenge della richiesta, la consegna NON viene usata come
+ * se appartenesse alla challenge sbagliata.
  */
-export function resolveStatement({ statementExcerpt = '', history = [], message = '' } = {}) {
+export function resolveStatement({
+  statementExcerpt = '', statementChallengeIds = [], challengeIds = [],
+  history = [], message = '',
+} = {}) {
+  const associated = idList(statementChallengeIds);
+  const selected = idList(challengeIds);
+  const challengeMismatch = associated.length > 0
+    && selected.length > 0
+    && !associated.some((id) => selected.includes(id));
+
   const explicit = cleanStatementExcerpt(statementExcerpt);
-  if (explicit) return { text: explicit, source: 'user-excerpt', fromCurrentMessage: false };
+  if (explicit && !challengeMismatch) {
+    return {
+      text: explicit, source: 'user-excerpt', fromCurrentMessage: false, challengeMismatch: false,
+    };
+  }
 
   const current = String(message || '').trim();
   if (looksLikeStatementPaste(current)) {
     const text = cleanStatementExcerpt(current);
-    if (text) return { text, source: 'chat-message', fromCurrentMessage: true };
+    if (text) {
+      return {
+        text, source: 'chat-message', fromCurrentMessage: true, challengeMismatch: false,
+      };
+    }
   }
 
+  // Non limitare agli ultimi messaggi: il testo incollato all'inizio di una
+  // conversazione lunga deve restare recuperabile. L'ordine è dal più recente.
   const previous = Array.isArray(history)
-    ? history.filter((item) => item?.role === 'user' && typeof item.content === 'string')
-      .slice(-8).reverse()
+    ? history.filter((item) => item?.role === 'user' && typeof item.content === 'string').reverse()
     : [];
-  for (const item of previous) {
-    if (!looksLikeStatementPaste(item.content)) continue;
-    const text = cleanStatementExcerpt(item.content);
-    if (text) return { text, source: 'chat-history', fromCurrentMessage: false };
+  if (!challengeMismatch) {
+    for (const item of previous) {
+      if (!looksLikeStatementPaste(item.content)) continue;
+      const text = cleanStatementExcerpt(item.content);
+      if (text) {
+        return {
+          text, source: 'chat-history', fromCurrentMessage: false, challengeMismatch: false,
+        };
+      }
+    }
   }
-  return { text: '', source: 'none', fromCurrentMessage: false };
+  return {
+    text: '', source: 'none', fromCurrentMessage: false, challengeMismatch,
+  };
 }

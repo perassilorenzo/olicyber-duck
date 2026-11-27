@@ -3,6 +3,7 @@
 import { byId, formatTime, toast, confirmDialog } from './utils.js';
 import { sendChat, ApiError } from './api.js';
 import { renderMarkdownInto } from './markdown.js';
+import { looksLikeStatementPaste, cleanStatementExcerpt } from './statement.js';
 import {
   GENERAL_CONVERSATION_ID, SELECTED_CHALLENGE_ID_PATTERN, CHAT_CONVERSATION_PREFIX,
 } from './store.js';
@@ -43,7 +44,13 @@ function shortTitle(message) {
   return String(message || '').replace(/\s+/g, ' ').trim().slice(0, 120);
 }
 
-export function createAssistant({ store, getSelectedChallenges, getChallenge, onConversationChange }) {
+function overlaps(a, b) {
+  return a.some((id) => b.includes(id));
+}
+
+export function createAssistant({
+  store, getSelectedChallenges, getChallenge, getAllChallenges, onConversationChange,
+}) {
   const log = byId('chat-log');
   const empty = byId('chat-empty');
   const form = byId('chat-form');
@@ -68,6 +75,21 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
     return (provider() || [])
       .filter((challenge) => challenge && typeof challenge.id === 'string'
         && SELECTED_CHALLENGE_ID_PATTERN.test(challenge.id));
+  }
+
+  /** Identifica la challenge da un titolo o da un `#id` citato nel testo. */
+  function challengeIdsFromText(text) {
+    const lower = String(text || '').toLowerCase();
+    const ids = [];
+    for (const challenge of getAllChallenges?.() || []) {
+      const title = String(challenge.title || '').toLowerCase();
+      const original = String(challenge.originalId || '').toLowerCase();
+      const mentioned = (title.length >= 10 && lower.includes(title))
+        || (original && lower.includes(`#${original}`));
+      if (mentioned && !ids.includes(challenge.id)) ids.push(challenge.id);
+      if (ids.length >= 6) break;
+    }
+    return ids;
   }
 
   // Una chat salvata viene riaperta con i suoi ID: il contesto non dipende
@@ -286,13 +308,29 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
   }
 
   /** Apre una chat esistente, ripristinando il suo contesto challenge. */
-  function openConversation(id, { keepSelection = false } = {}) {
+  function openConversation(id, { keepSelection = false, carryStatement = true } = {}) {
     if (typeof id !== 'string' || !id) return false;
     const automaticContext = id.startsWith('ctx:');
     if (id !== GENERAL_CONVERSATION_ID && !store.getConversation(id).length
       && !isExplicitChat(id) && !automaticContext) return false;
     if (active) { active.controller.abort(); active = null; }
     const meta = store.getConversationMeta(id);
+    // La consegna può essere stata incollata prima di selezionare la challenge:
+    // la si porta nel contesto appena creato, senza crearne uno nuovo.
+    if (carryStatement && id !== key) {
+      const previousMeta = store.getConversationMeta(key);
+      if (previousMeta.statementExcerpt && !meta.statementExcerpt) {
+        const previousIds = previousMeta.statementChallengeIds || [];
+        const targetIds = meta.challengeIds || [];
+        const compatible = !previousIds.length || !targetIds.length || overlaps(previousIds, targetIds);
+        if (compatible) {
+          store.setConversationMeta(id, {
+            statementExcerpt: previousMeta.statementExcerpt,
+            statementChallengeIds: previousIds.length ? previousIds : targetIds,
+          });
+        }
+      }
+    }
     if (meta.kind === 'challenge' && meta.challengeIds.length) {
       mode = 'challenge';
       if (!keepSelection) {
@@ -323,7 +361,7 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
       title: 'Nuova chat',
       challengeIds: [],
     });
-    openConversation(id, { keepSelection: true });
+    openConversation(id, { keepSelection: true, carryStatement: false });
     input.focus();
     return id;
   }
@@ -357,10 +395,11 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
     if (!message || active) return;
     const previous = lastRequests.get(key);
     const meta = store.getConversationMeta(key);
+    const isPaste = looksLikeStatementPaste(message) && !isRetry;
+    const pastedExcerpt = isPaste ? cleanStatementExcerpt(message) : '';
+    const postedExcerpt = readStatementExcerpt();
     const storedExcerpt = meta.statementExcerpt || '';
-    const statementExcerpt = isRetry
-      ? (previous?.statementExcerpt || storedExcerpt)
-      : (readStatementExcerpt() || storedExcerpt);
+    const storedIds = meta.statementChallengeIds || [];
     statusMessage = '';
     const pendingEdit = editing && !skipAppend ? editing : null;
     if (pendingEdit) {
@@ -368,14 +407,27 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
       store.truncateConversation(key, pendingEdit.index + 1);
       editing = null;
     }
-    const storedIds = useStoredContext && meta.challengeIds.length
-      ? meta.challengeIds
-      : selections.map((challenge) => challenge.id);
-    const requestChallengeIds = mode === 'challenge' ? storedIds : [];
+    const selectedIds = selections.map((challenge) => challenge.id);
+    const requestChallengeIds = mode === 'challenge'
+      ? (useStoredContext && meta.challengeIds.length ? meta.challengeIds : selectedIds)
+      : [];
     if (mode === 'challenge' && !requestChallengeIds.length) {
       showError('Seleziona almeno una challenge per usare la modalità contestuale.');
       return;
     }
+    // L'associazione viene fissata quando il testo arriva (campo dedicato,
+    // incollo in chat o challenge riconosciuta dal titolo) e poi riutilizzata.
+    const associatedIds = isRetry
+      ? (previous?.statementChallengeIds || storedIds)
+      : ((isPaste || postedExcerpt)
+        ? (requestChallengeIds.length ? requestChallengeIds : challengeIdsFromText(message))
+        : storedIds);
+    const mismatch = !isPaste && !postedExcerpt && Boolean(storedExcerpt)
+      && storedIds.length > 0 && requestChallengeIds.length > 0
+      && !overlaps(storedIds, requestChallengeIds);
+    const statementExcerpt = isRetry
+      ? (previous?.statementExcerpt || storedExcerpt)
+      : (postedExcerpt || pastedExcerpt || (mismatch ? '' : storedExcerpt));
 
     let conversation = store.getConversation(key);
     if (isRetry && conversation.at(-1)?.role === 'user' && conversation.at(-1)?.content === message) {
@@ -384,7 +436,10 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
     const history = historyForRequest(conversation);
     if (!isRetry && !skipAppend && !pendingEdit) {
       const metaPatch = {};
-      if (statementExcerpt) metaPatch.statementExcerpt = statementExcerpt;
+      if (statementExcerpt) {
+        metaPatch.statementExcerpt = statementExcerpt;
+        metaPatch.statementChallengeIds = [...associatedIds];
+      }
       if (isExplicitChat(key) && /^Nuova chat/.test(meta.title)) {
         metaPatch.title = shortTitle(message) || 'Chat';
       }
@@ -393,7 +448,11 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
         role: 'user', content: message, createdAt: new Date().toISOString(),
       });
     }
-    lastRequests.set(key, { message, statementExcerpt, challengeIds: [...requestChallengeIds] });
+    lastRequests.set(key, {
+      message, statementExcerpt,
+      statementChallengeIds: [...associatedIds],
+      challengeIds: [...requestChallengeIds],
+    });
     hideError();
 
     setInputValue('');
@@ -415,7 +474,10 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
 
     try {
       const result = await sendChat(
-        { challengeIds: requestChallengeIds, message, history, statementExcerpt },
+        {
+          challengeIds: requestChallengeIds, message, history,
+          statementExcerpt, statementChallengeIds: associatedIds,
+        },
         {
           signal: controller.signal,
           onProgress: (cumulative) => {
@@ -492,7 +554,7 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
     editing = null;
     statusMessage = '';
     hideError();
-    openConversation(GENERAL_CONVERSATION_ID, { keepSelection: true });
+    openConversation(GENERAL_CONVERSATION_ID, { keepSelection: true, carryStatement: false });
     toast('Chat cancellata.');
   });
 
@@ -539,7 +601,7 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
       if (active?.key === id) { active.controller.abort(); active = null; }
       store.deleteConversation(id);
       lastRequests.delete(id);
-      if (key === id) openConversation(GENERAL_CONVERSATION_ID, { keepSelection: true });
+      if (key === id) openConversation(GENERAL_CONVERSATION_ID, { keepSelection: true, carryStatement: false });
       else onConversationChange?.();
     },
     focus() { if (!input.disabled) input.focus(); },

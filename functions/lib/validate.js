@@ -96,6 +96,24 @@ export function parseChatRequest(rawBody) {
     if (!challengeIds.includes(id)) challengeIds.push(id);
   }
 
+  // Associazione dell'estratto: è un'informazione del client, non una fonte
+  // verificata. Serve solo a non usare la consegna di una challenge diversa.
+  const rawStatementIds = body.statementChallengeIds === undefined
+    ? []
+    : body.statementChallengeIds;
+  if (!Array.isArray(rawStatementIds) || rawStatementIds.length > MAX_CONTEXT_CHALLENGES) {
+    return { ok: false, error: 'Associazione della consegna non valida.' };
+  }
+  const statementChallengeIds = [];
+  for (const rawId of rawStatementIds) {
+    const id = clean(rawId, 64);
+    if (!ID_PATTERN.test(id)) {
+      return { ok: false, error: 'Associazione della consegna non valida.' };
+    }
+    if (id === GENERAL_CHALLENGE_ID) continue;
+    if (!statementChallengeIds.includes(id)) statementChallengeIds.push(id);
+  }
+
   const rawHistory = body.history === undefined ? [] : body.history;
   if (!Array.isArray(rawHistory)) return { ok: false, error: 'Cronologia non valida.' };
   if (rawHistory.length > MAX_HISTORY_MESSAGES) {
@@ -122,6 +140,7 @@ export function parseChatRequest(rawBody) {
       message,
       challengeIds,
       history,
+      statementChallengeIds,
       statementExcerpt: cleanStatementExcerpt(body.statementExcerpt),
     },
   };

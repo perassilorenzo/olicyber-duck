@@ -125,6 +125,9 @@ function normalizeConversationMeta(raw) {
   const statementExcerpt = typeof raw.statementExcerpt === 'string'
     ? raw.statementExcerpt.slice(0, 2000)
     : '';
+  // L'estratto è associato alle challenge attive al momento del incollo: così
+  // un testo di un'altra challenge non viene riutilizzato come fosse il nostro.
+  const statementChallengeIds = normalizeSelectedIds(raw.statementChallengeIds);
   return {
     title,
     challengeIds,
@@ -132,6 +135,7 @@ function normalizeConversationMeta(raw) {
     createdAt,
     updatedAt,
     statementExcerpt,
+    statementChallengeIds,
   };
 }
 
@@ -165,9 +169,11 @@ export function normalizeState(raw) {
     }
   }
   // Metadati senza messaggi (per esempio dopo una cancellazione selettiva) non
-  // devono generare voci fantasma.
+  // devono generare voci fantasma. La chat generale è l'eccezione: esiste
+  // sempre, anche vuota, e deve conservare l'estratto incollato prima del
+  // primo messaggio (e dopo una cancellazione della cronologia).
   for (const id of Object.keys(conversationMeta)) {
-    if (!conversations[id]) delete conversationMeta[id];
+    if (!conversations[id] && id !== GENERAL_CONVERSATION_ID) delete conversationMeta[id];
   }
 
   const favorites = Array.isArray(state.favorites)
@@ -338,6 +344,7 @@ export class LocalStore {
       createdAt: stored.createdAt || firstUser?.createdAt || null,
       updatedAt: stored.updatedAt || messages.at(-1)?.createdAt || null,
       statementExcerpt: stored.statementExcerpt || '',
+      statementChallengeIds: [...(stored.statementChallengeIds || [])],
       messageCount: messages.length,
     };
   }

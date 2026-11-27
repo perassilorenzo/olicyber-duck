@@ -202,6 +202,7 @@ async function init() {
   assistant = createAssistant({
     store,
     getSelectedChallenges,
+    getAllChallenges: () => catalog.challenges,
     onConversationChange: () => refreshWorkspace(),
   });
 

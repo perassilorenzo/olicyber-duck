@@ -238,6 +238,7 @@ export function conversationState(history = [], message = '', options = {}) {
     previousIntent: prior?.intent || null,
     statementAvailable: Boolean(statement.text),
     statementSource: statement.source,
+    statementChallengeMismatch: Boolean(statement.challengeMismatch),
     statementMessageIsPaste: isPaste,
     challengeLinkRequested: /\b(?:challenge|esercizio|nel mio caso)\b/i.test(String(message || '')),
     solutionRequestInHistory: hasSolutionRequestInHistory(history),

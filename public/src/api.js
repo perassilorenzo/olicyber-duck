@@ -73,6 +73,9 @@ async function readEventStream(response, onProgress) {
         if (typeof event.needsClarification === 'boolean') result.needsClarification = event.needsClarification;
         if (typeof event.statementProvided === 'boolean') result.statementProvided = event.statementProvided;
         if (typeof event.statementStatus === 'string') result.statementStatus = event.statementStatus;
+        if (typeof event.statementChallengeMismatch === 'boolean') {
+          result.statementChallengeMismatch = event.statementChallengeMismatch;
+        }
         if (typeof event.catalogVerified === 'boolean') result.catalogVerified = event.catalogVerified;
         if (typeof event.contextMode === 'string') result.contextMode = event.contextMode;
         if (typeof event.challengeCount === 'number') result.challengeCount = event.challengeCount;
@@ -97,10 +100,13 @@ async function readEventStream(response, onProgress) {
   return { ...result, reply };
 }
 
-export async function sendChat({ challengeIds, message, history, statementExcerpt = '' }, { onProgress, onToken, signal } = {}) {
+export async function sendChat({
+  challengeIds, message, history, statementExcerpt = '', statementChallengeIds = [],
+}, { onProgress, onToken, signal } = {}) {
   const report = onProgress || onToken;
   const payload = { challengeIds, message, history };
   if (statementExcerpt) payload.statementExcerpt = statementExcerpt;
+  if (statementChallengeIds.length) payload.statementChallengeIds = statementChallengeIds;
   const response = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
@@ -127,6 +133,7 @@ export async function sendChat({ challengeIds, message, history, statementExcerp
     needsClarification: Boolean(data.needsClarification),
     statementProvided: Boolean(data.statementProvided),
     statementStatus: typeof data.statementStatus === 'string' ? data.statementStatus : null,
+    statementChallengeMismatch: Boolean(data.statementChallengeMismatch),
     catalogVerified: Boolean(data.catalogVerified),
     contextMode: typeof data.contextMode === 'string' ? data.contextMode : null,
     challengeCount: typeof data.challengeCount === 'number' ? data.challengeCount : null,
