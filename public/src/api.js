@@ -41,7 +41,11 @@ async function readEventStream(response, onProgress) {
   const decoder = new TextDecoder();
   let buffer = '';
   let reply = '';
-  let result = { mode: 'ai', model: undefined, challengeIds: [] };
+  let result = {
+    mode: 'ai', model: undefined, challengeIds: [], followUp: false,
+    followUpKind: null, conversationTopic: null, technologies: [],
+    previousIntent: null, regenerated: false, incomplete: false,
+  };
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -76,6 +80,14 @@ async function readEventStream(response, onProgress) {
         if (typeof event.personalContext === 'boolean') result.personalContext = event.personalContext;
         if (typeof event.support === 'boolean') result.support = event.support;
         if (typeof event.hintStage === 'number') result.hintStage = event.hintStage;
+        if (typeof event.followUp === 'boolean') result.followUp = event.followUp;
+        if (typeof event.followUpKind === 'string') result.followUpKind = event.followUpKind;
+        if (typeof event.conversationTopic === 'string') result.conversationTopic = event.conversationTopic;
+        if (Array.isArray(event.technologies)) result.technologies = event.technologies;
+        if (typeof event.previousIntent === 'string') result.previousIntent = event.previousIntent;
+        if (typeof event.challengeLinkRequested === 'boolean') result.challengeLinkRequested = event.challengeLinkRequested;
+        if (typeof event.regenerated === 'boolean') result.regenerated = event.regenerated;
+        if (typeof event.incomplete === 'boolean') result.incomplete = event.incomplete;
         if (event.error) throw new ApiError(event.error, Number(event.status) || response.status);
       } catch (error) {
         if (error instanceof ApiError) throw error;
@@ -122,5 +134,13 @@ export async function sendChat({ challengeIds, message, history, statementExcerp
     personalContext: Boolean(data.personalContext),
     support: Boolean(data.support),
     hintStage: typeof data.hintStage === 'number' ? data.hintStage : null,
+    followUp: Boolean(data.followUp),
+    followUpKind: typeof data.followUpKind === 'string' ? data.followUpKind : null,
+    conversationTopic: typeof data.conversationTopic === 'string' ? data.conversationTopic : null,
+    technologies: Array.isArray(data.technologies) ? data.technologies : [],
+    previousIntent: typeof data.previousIntent === 'string' ? data.previousIntent : null,
+    challengeLinkRequested: Boolean(data.challengeLinkRequested),
+    regenerated: Boolean(data.regenerated),
+    incomplete: Boolean(data.incomplete),
   };
 }

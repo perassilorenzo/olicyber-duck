@@ -1,9 +1,11 @@
 import { parseChatRequest, MAX_BODY_BYTES } from '../lib/validate.js';
 import {
   buildMessages, redactOutput, detectSolutionRequest, outputLooksUnsafe,
-  classifyIntent, INTENTS, isSolutionRequest, hintStageFor, isPersonalContext,
-  buildDeliveryStatus,
+  INTENTS, isSolutionRequest, hintStageFor, isPersonalContext,
+  buildDeliveryStatus, classifyIntentInContext, conversationState,
 } from '../lib/system-prompt.js';
+import { analyzeReply } from '../lib/response-quality.js';
+import { resolveStatement } from '../lib/statement.js';
 import { demoReply } from '../lib/demo.js';
 import { createRateLimiter } from '../lib/rate-limit.js';
 import { CATALOG_META, toPromptContexts } from '../lib/catalog.js';
@@ -25,9 +27,21 @@ const SOLUTION_REFUSAL = 'Non posso fornire flag, soluzioni, writeup o payload p
   + 'Posso aiutarti a capire i concetti coinvolti, a formulare una prima ipotesi e a verificare il tuo ragionamento: '
   + 'dimmi cosa hai capito finora oppure chiedimi una spiegazione teorica dell’argomento.';
 
-const CLARIFICATION_REPLY = 'Non sono sicuro di cosa ti serva. Dimmi se vuoi: '
-  + 'una spiegazione teorica di un concetto, un aiuto per capire la consegna, '
-  + 'un primo suggerimento oppure una verifica del tuo ragionamento.';
+/** Chiarimento mirato: evita il menu generico quando manca solo il contesto. */
+function clarificationReply(message = '', state = {}) {
+  const technology = state.technologies?.[0];
+  const detail = technology
+    ? `Hai menzionato ${technology}, ma non ho ancora il concetto a cui si riferisce.`
+    : 'Manca il concetto a cui ti riferisci.';
+  return `Non sono sicuro di cosa ti serva. ${detail} Dimmi quale argomento vuoi trattare e cosa vuoi ottenere: spiegazione, esempio oppure verifica del tuo ragionamento.`;
+}
+
+const INCOMPLETE_REPLY = 'La risposta generata è risultata incompleta e non voglio inventare il contenuto mancante. '
+  + 'Riformula la domanda o chiedimi un passaggio più specifico: riprenderò il filo della conversazione da quel punto.';
+
+const REGENERATION_INSTRUCTION = '\n\nRIGENERAZIONE CONTROLLATA: la risposta precedente è risultata incompleta '
+  + '(elenco vuoto, titolo senza contenuto, testo o codice troncati oppure ripetizione di un chiarimento). '
+  + 'Produci una risposta completa e coerente con il dialogo, senza inventare dettagli mancanti e senza fornire soluzioni.';
 
 // La consegna originale non è nel catalogo del tutor: l'unica fonte possibile è
 // l'estratto incollato dallo studente. Senza estratto non va inventata.
@@ -149,6 +163,14 @@ function aiErrorResponse(error) {
   return json({ error: info.message }, info.status, info.status === 503 ? { 'Retry-After': '60' } : {});
 }
 
+/** Unica via di chiamata al modello: vale per prima risposta e rigenerazione. */
+function runModel(env, model, input) {
+  return withTimeout(
+    Promise.resolve().then(() => env.AI.run(model, input)),
+    AI_TIMEOUT_MS,
+  );
+}
+
 function withTimeout(promise, ms) {
   let timer;
   return Promise.race([
@@ -227,7 +249,7 @@ function sseResponse(stream) {
  * cumulativo e autorevole: il client lo sostituisce, quindi un rifiuto
  * sopraggiunto può annullare il testo parziale già inviato.
  */
-function createAiEventStream(source, meta, deadline, refusal = SOLUTION_REFUSAL) {
+function createAiEventStream(source, meta, deadline, refusal = SOLUTION_REFUSAL, history = [], regenerate = null) {
   let reader;
   try {
     reader = source.getReader();
@@ -305,8 +327,26 @@ function createAiEventStream(source, meta, deadline, refusal = SOLUTION_REFUSAL)
           const cleaned = redactOutput(rawReply);
           if (!cleaned) {
             emit({ ...meta, error: 'Il modello non ha restituito una risposta utilizzabile.', status: 502 });
-          } else {
+          } else if (!analyzeReply(cleaned, { history }).incomplete) {
             emit({ ...meta, reply: cleaned });
+          } else {
+            // Il campo `reply` è cumulativo e autorevole: sostituisce il testo
+            // parziale già inviato senza cicli di rigenerazione.
+            const recovered = regenerate ? await regenerate() : null;
+            if (recovered?.error) {
+              emit({
+                ...meta,
+                error: recovered.error,
+                status: recovered.status,
+                retryAfter: recovered.status === 503 ? 60 : undefined,
+              });
+            } else if (recovered?.blocked || (recovered?.reply && outputLooksUnsafe(recovered.reply))) {
+              emit({ ...meta, reply: refusal, blocked: true });
+            } else if (recovered?.reply && !analyzeReply(recovered.reply, { history }).incomplete) {
+              emit({ ...meta, reply: recovered.reply, regenerated: true });
+            } else {
+              emit({ ...meta, reply: INCOMPLETE_REPLY, incomplete: true, needsClarification: true });
+            }
           }
         }
       } catch (error) {
@@ -329,6 +369,59 @@ function createAiEventStream(source, meta, deadline, refusal = SOLUTION_REFUSAL)
   });
 
   return sseResponse(stream);
+}
+
+/** Legge uno SSE del provider senza emettere progress: usato nella rigenerazione. */
+async function readProviderText(source, deadline) {
+  let reader;
+  try {
+    reader = source.getReader();
+  } catch {
+    return { error: 'Streaming non disponibile.', status: 502 };
+  }
+  const decoder = new TextDecoder();
+  let providerBuffer = '';
+  let rawReply = '';
+  let blocked = false;
+  const processLine = (line) => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) return;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === '[DONE]') return;
+    let chunk;
+    try {
+      chunk = JSON.parse(payload);
+    } catch {
+      return;
+    }
+    const delta = deltaFromChunk(chunk);
+    if (!delta) return;
+    rawReply += delta;
+    if (outputLooksUnsafe(rawReply)) blocked = true;
+  };
+  try {
+    while (!blocked) {
+      const { value, done } = await readWithDeadline(reader, deadline);
+      if (done) break;
+      providerBuffer += decoder.decode(value, { stream: true });
+      const lines = providerBuffer.split('\n');
+      providerBuffer = lines.pop() || '';
+      for (const line of lines) {
+        processLine(line);
+        if (blocked) break;
+      }
+    }
+    if (!blocked) {
+      providerBuffer += decoder.decode();
+      if (providerBuffer.trim()) processLine(providerBuffer);
+    }
+  } catch (error) {
+    const info = aiErrorInfo(error);
+    return { error: info.message, status: info.status, retryAfter: info.status === 503 ? 60 : undefined };
+  } finally {
+    await cancelReader(reader);
+  }
+  return blocked ? { blocked: true } : { text: rawReply };
 }
 
 export async function onRequestPost({ request, env }) {
@@ -368,7 +461,11 @@ export async function onRequestPost({ request, env }) {
 
   const parsed = parseChatRequest(rawBody);
   if (!parsed.ok) return json({ error: parsed.error }, 400);
-  const { message, challengeIds, history, statementExcerpt } = parsed.value;
+  const { message, challengeIds, history, statementExcerpt: postedExcerpt } = parsed.value;
+  // La consegna può essere stata incollata nel campo dedicato oppure direttamente
+  // in chat: in entrambi i casi diventa contesto persistente della richiesta.
+  const statement = resolveStatement({ statementExcerpt: postedExcerpt, history, message });
+  const statementExcerpt = statement.text;
 
   // Il client invia solo ID: tutti i metadati arrivano dal catalogo server.
   const challenges = toPromptContexts(challengeIds);
@@ -377,14 +474,20 @@ export async function onRequestPost({ request, env }) {
   const model = configuredModel(env);
   const mode = env.AI ? 'ai' : 'demo';
   const primaryId = challengeIds[0] || 'general';
-  const intent = classifyIntent(message);
+  const statementOptions = { statementExcerpt };
+  const state = conversationState(history, message, statementOptions);
+  // Il contesto può reinterpretare un messaggio breve, ma non aggira il
+  // rifiuto deterministico: la richiesta corrente viene sempre classificata.
+  const intent = classifyIntentInContext(history, message, statementOptions);
   const personalContext = isPersonalContext(message);
   const hintStage = intent === INTENTS.REQUEST_HINT ? hintStageFor(history, message) : null;
   const refusal = solutionRefusal(history, message);
   // Il timeout copre anche l'avvio dello stream, non solo la lettura dei chunk.
   const deadline = Date.now() + AI_TIMEOUT_MS;
   const catalogVerified = Boolean(CATALOG_META.source?.verified);
-  const delivery = buildDeliveryStatus({ statementExcerpt, catalogVerified });
+  const delivery = buildDeliveryStatus({
+    statementExcerpt, catalogVerified, source: statement.source,
+  });
   const contextMode = challengeIds.length === 0
     ? 'general'
     : (challengeIds.length === 1 ? 'single' : 'multi');
@@ -395,11 +498,19 @@ export async function onRequestPost({ request, env }) {
     challengeId: primaryId,
     intent,
     statementProvided: Boolean(statementExcerpt),
+    statementSource: statement.source,
     statementStatus: delivery.status,
+    statementFromCurrentMessage: statement.fromCurrentMessage,
     catalogVerified,
     contextMode,
     challengeCount: challengeIds.length,
     personalContext,
+    followUp: state.followUp,
+    followUpKind: state.kind,
+    conversationTopic: state.topics[0] || null,
+    technologies: state.technologies,
+    challengeLinkRequested: state.challengeLinkRequested,
+    ...(state.previousIntent ? { previousIntent: state.previousIntent } : {}),
     ...(hintStage ? { hintStage } : {}),
   };
 
@@ -421,13 +532,17 @@ export async function onRequestPost({ request, env }) {
   }
   // Ambiguità: chiarire invece di bloccare una domanda didattica innocua.
   if (intent === INTENTS.CLARIFY) {
-    return json({ reply: CLARIFICATION_REPLY, ...meta, needsClarification: true, sources: [] });
+    return json({
+      reply: clarificationReply(message, state), ...meta, needsClarification: true, sources: [],
+    });
   }
 
   // Retrieval sempre lato server e solo sulla knowledge base didattica.
   const realContexts = challenges.filter((item) => item.general !== true);
   const sources = retrieveKnowledge({
     message,
+    history,
+    statement: statementExcerpt,
     categories: realContexts.map((item) => item.category).filter(Boolean),
     tags: realContexts.flatMap((item) => Array.isArray(item.tags) ? item.tags : []),
   });
@@ -435,7 +550,13 @@ export async function onRequestPost({ request, env }) {
   meta.sources = sourceMeta;
 
   if (!env.AI) {
-    return json({ ...meta, reply: demoReply({ challenges, history, message, sources }) });
+    return json({
+      ...meta,
+      reply: demoReply({
+        challenges, history, message, sources,
+        statement: statementExcerpt, intent, delivery,
+      }),
+    });
   }
 
   const input = {
@@ -448,6 +569,7 @@ export async function onRequestPost({ request, env }) {
       hintStage,
       personalContext,
       delivery,
+      conversationState: state,
       knowledgeContext: knowledgeContext(sources),
     }),
     max_completion_tokens: MAX_COMPLETION_TOKENS,
@@ -458,18 +580,43 @@ export async function onRequestPost({ request, env }) {
     chat_template_kwargs: { enable_thinking: false },
   };
 
+  // Al massimo una rigenerazione, con lo stesso contesto e un'istruzione
+  // aggiuntiva nel solo messaggio di sistema.
+  const retryInput = {
+    ...input,
+    messages: input.messages.map((item, index) => (index === 0
+      ? { ...item, content: `${item.content}${REGENERATION_INSTRUCTION}` }
+      : item)),
+  };
+  const regenerate = async () => {
+    try {
+      const retryResult = await runModel(env, model, retryInput);
+      const retrySource = isReadableStream(retryResult)
+        ? retryResult
+        : (isReadableStream(retryResult?.body) ? retryResult.body : null);
+      if (retrySource) {
+        const collected = await readProviderText(retrySource, Date.now() + AI_TIMEOUT_MS);
+        if (collected.error || collected.blocked) return collected;
+        const cleaned = redactOutput(collected.text);
+        return cleaned ? { reply: cleaned } : {};
+      }
+      const raw = redactOutput(extractText(retryResult));
+      return raw ? { reply: raw } : {};
+    } catch (error) {
+      const info = aiErrorInfo(error);
+      return { error: info.message, status: info.status, retryAfter: info.status === 503 ? 60 : undefined };
+    }
+  };
+
   let result;
   try {
-    result = await withTimeout(
-      Promise.resolve().then(() => env.AI.run(model, input)),
-      AI_TIMEOUT_MS,
-    );
+    result = await runModel(env, model, input);
   } catch (error) {
     return aiErrorResponse(error);
   }
 
   const source = isReadableStream(result) ? result : (isReadableStream(result?.body) ? result.body : null);
-  if (source) return createAiEventStream(source, meta, deadline, refusal);
+  if (source) return createAiEventStream(source, meta, deadline, refusal, history, regenerate);
 
   // Fallback per binding/override che restituiscono comunque JSON sincrono.
   const rawReply = extractText(result);
@@ -479,5 +626,21 @@ export async function onRequestPost({ request, env }) {
   }
   const reply = redactOutput(rawReply);
   if (!reply) return json({ error: 'Il modello non ha restituito una risposta utilizzabile.' }, 502);
-  return json({ ...meta, reply });
+  if (!analyzeReply(reply, { history }).incomplete) return json({ ...meta, reply });
+
+  const recovered = await regenerate();
+  if (recovered.error) {
+    return json(
+      { error: recovered.error },
+      recovered.status,
+      recovered.status === 503 ? { 'Retry-After': '60' } : {},
+    );
+  }
+  if (recovered.blocked || (recovered.reply && outputLooksUnsafe(recovered.reply))) {
+    return json({ ...meta, reply: refusal, blocked: true });
+  }
+  if (recovered.reply && !analyzeReply(recovered.reply, { history }).incomplete) {
+    return json({ ...meta, reply: recovered.reply, regenerated: true });
+  }
+  return json({ ...meta, reply: INCOMPLETE_REPLY, incomplete: true, needsClarification: true });
 }

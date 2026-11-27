@@ -66,7 +66,17 @@ Se lo studente unisce una richiesta di flag alla difficoltà personale, prevale 
 
 Questi flussi sono verificati da `tests/tutor-context-flow.test.mjs` (backend/client) e `tests/workspace-history.test.mjs` (UI).
 
-## 9. Verifica automatica
+## 9. Continuità e completezza
+
+**Studente:** «Spiegami come funziona una sessione» → «Intendo session in Python».
+
+**Risposta attesa:** il tutor aggiorna il contesto tecnico e continua dalla spiegazione precedente. Sa distinguere `requests.Session()` (cookie e impostazioni mantenute tra richieste HTTP), `flask.session` (dati trasportati da cookie firmati, non cifrati) e le sessioni Django con backend lato server, senza dare per scontato quale implementazione sia presente. Se la challenge è rilevante, collega il concetto ai soli metadati noti; chiede l'implementazione solo dopo aver fornito tutte le informazioni deducibili.
+
+Lo stesso comportamento vale per «in Flask», «fammi un esempio», «non ho capito», «e come funziona?», «continua», «nel codice?» e «perché?»: il backend invia al modello argomento, tecnologie menzionate e intento precedente, e il retrieval usa anche le domande precedenti. Se manca del tutto il contesto, il chiarimento è mirato alla tecnologia o al concetto, non un menu generico. Un «continua» dopo un rifiuto di flag resta bloccato.
+
+Se il modello produce un elenco numerato vuoto, un titolo senza contenuto, testo o codice troncato oppure ripete lo stesso fallback, l'handler tenta una sola rigenerazione con lo stesso contesto. Se nemmeno il secondo tentativo è completo, risponde dichiarando il problema senza inventare il contenuto mancante. Le risposte complete non vengono rigenerate.
+
+## 10. Verifica automatica
 
 I dodici casi sono esercitati da `tests/tutor-behavior-v2.test.mjs`. Ogni test chiama `onRequestPost` con un binding `AI` finto che registra il modello e l'`input.messages` effettivamente inviati, oppure consuma la risposta SSE reale dell'handler. Le asserzioni verificano metadata, numero di chiamate al modello, canale `system`/`user`, rifiuti e contenuto degli eventi; non si limitano a cercare stringhe nei file sorgente.
 
@@ -85,12 +95,13 @@ I dodici casi sono esercitati da `tests/tutor-behavior-v2.test.mjs`. Ogni test c
 | 11. Nessun dettaglio inventato | `11. nessun dettaglio inventato...` | La risposta senza estratto non contiene titolo/tag/hint; il contesto inviato al modello non contiene descrizione, hint o allegati. |
 | 12. Nessuna indicazione risolutiva | `12. nessuna indicazione risolutiva...` | Output unsafe bloccato sia in JSON sia in SSE con rifiuto trasmesso all'ultimo evento; un esempio teorico benigno non viene bloccato. |
 
-Il test 13 verifica che `public/src/api.js` legga `intent`, `hintStage`, `personalContext`, `support`, `statementMissing`, `statementProvided`, `needsClarification`, `blocked` e `sources` sia nella risposta JSON sia negli eventi SSE. `tests/tutor-context-flow.test.mjs` aggiunge 4 casi: stato consegna strutturato e separato dal testo, metadati uguali in JSON e SSE, cambio challenge con contesto primario e parsing client dei nuovi campi. `tests/workspace-history.test.mjs` verifica nuova chat generica, titoli, contesto riaperto, estratto persistente, eliminazione con conferma e collapse del tutor. `npm test` esegue l'intera suite (**127 test passati**); i test di branding (`tests/branding.test.mjs`) restano inclusi e verificano che logo e icone siano ancora collegati.
+Il test 13 verifica che `public/src/api.js` legga `intent`, `hintStage`, `personalContext`, `support`, `statementMissing`, `statementProvided`, `needsClarification`, `blocked` e `sources` sia nella risposta JSON sia negli eventi SSE. `tests/conversation-awareness.test.mjs` aggiunge 15 casi con mock AI che registra `input.messages`: verificano i messaggi realmente inviati al modello per i follow-up, la distinzione tra implementazioni Python, il chiarimento mirato senza contesto, la rigenerazione limitata in JSON e SSE, la conversazione lunga e la preservazione dei rifiuti. `tests/tutor-context-flow.test.mjs` aggiunge 4 casi: stato consegna strutturato e separato dal testo, metadati uguali in JSON e SSE, cambio challenge con contesto primario e parsing client dei nuovi campi. `tests/workspace-history.test.mjs` verifica nuova chat generica, titoli, contesto riaperto, estratto persistente, eliminazione con conferma e collapse del tutor. `npm test` esegue l'intera suite (**142 test passati**); i test di branding (`tests/branding.test.mjs`) restano inclusi e verificano che logo e icone siano ancora collegati.
 
 Questi test verificano il contratto del backend e i filtri deterministici: non sostituiscono una valutazione del modello reale, che richiede il binding Workers AI effettivo.
 
-## 10. Limiti
+## 11. Limiti
 
 - Le risposte AI non sono deterministiche: prompt, classificatore e redaction non garantiscono l’assenza matematica di soluzioni.
+- Il controllo di completezza è strutturale: intercetta elenchi vuoti, titoli senza contenuto e troncamenti evidenti, ma non valuta la correttezza tecnica né recupera informazioni che il modello non ha prodotto.
 - L’estratto incollato può essere incompleto o fuorviante: va trattato come dato non verificato.
 - Nessun writeup o materiale di soluzione OliCyber è una fonte del tutor.

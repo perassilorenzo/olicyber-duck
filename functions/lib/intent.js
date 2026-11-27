@@ -3,8 +3,9 @@
  *
  * Il classificatore è lato server e NON sostituisce il system prompt: decide
  * solo se una richiesta può procedere, se va rifiutata oppure se conviene
- * chiedere un chiarimento. Non usa il modello e non può essere influenzato da
- * testi diversi dal messaggio corrente.
+ * chiedere un chiarimento. `classifyIntent` guarda il messaggio corrente e
+ * resta il controllo di sicurezza; la versione contestuale è in
+ * `conversation.js` e può riconoscere i follow-up senza aggirare i rifiuti.
  *
  * Regola principale: una parola come "flag", "exploit", "payload", "challenge"
  * o "risolvere" NON basta a bloccare. Serve una richiesta esplicita di
@@ -18,6 +19,10 @@ export const INTENTS = Object.freeze({
   REVIEW_REASONING: 'review_reasoning',
   REQUEST_SOLUTION: 'request_solution',
   CLARIFY: 'clarify',
+  /** Precisazione, continuazione o domanda breve che riprende il dialogo. */
+  FOLLOW_UP: 'follow_up',
+  /** Consegna incollata dallo studente: va spiegata, non risolta. */
+  STATEMENT_PROVIDED: 'statement_provided',
 });
 
 /** Livelli di progressione degli hint: 1 concetto, 2 osservazione, 3 ipotesi. */

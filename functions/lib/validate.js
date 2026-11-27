@@ -2,7 +2,8 @@
 
 export const MAX_BODY_BYTES = 16_000;
 export const MAX_MESSAGE_CHARS = 4_000;
-export const MAX_HISTORY_MESSAGES = 12;
+/** Cronologia più ampia: il server conserva ancore e scambi recenti. */
+export const MAX_HISTORY_MESSAGES = 24;
 export const MAX_HISTORY_CHARS = 8_000;
 export const MAX_CONTEXT_CHALLENGES = 6;
 /** Estratto incollato dallo studente: non è una fonte verificata. */
@@ -24,7 +25,7 @@ function clean(value, maxChars) {
  * flag evidenti prima di entrare nel contesto del modello. Non viene mai
  * confrontato con il catalogo né salvato come fonte verificata.
  */
-function cleanStatementExcerpt(value) {
+export function cleanStatementExcerpt(value) {
   let text = clean(value, MAX_STATEMENT_CHARS);
   // Le interruzioni di riga sono parte della consegna: vengono conservate,
   // mentre gli spazi orizzontali e i caratteri di controllo vengono normalizzati.
@@ -37,9 +38,10 @@ function cleanStatementExcerpt(value) {
     .replace(/\b(?:flag|olicyber|ctf|ITASEC|OBUDMW|ptm|cnvlbd|cixd|xcqv|fzau|synt|cyvz)\s*[{\[][^\]}]{0,240}[\]}]/gis, '[TESTO RIMOSSO]')
     .replace(/\b[A-Za-z][A-Za-z0-9_]*\s*\{\s*[A-Za-z0-9]{8,}[!?]?\s*\}/gi, '[TESTO RIMOSSO]')
     .replace(/\bflag\s*[:=]\s*[^\s`"']{6,}/gi, '[TESTO RIMOSSO]')
-    // Flag troncata dal limite di lunghezza: senza parentesi di chiusura il
-    // prefisso non deve comunque raggiungere il modello.
-    .replace(/\bflag\s*[{\[]\s*[^\s}\]]{0,240}/gi, '[TESTO RIMOSSO]');
+    // Flag troncata dal limite di lunghezza: il valore va rimosso anche senza
+    // parentesi di chiusura. Il prefisso nudo «flag{» resta, perché può essere
+    // parte della spiegazione del formato richiesto dalla consegna.
+    .replace(/\bflag\s*[{\[]\s*(?=[A-Za-z0-9_])[^\s}\]]{1,240}/gi, '[TESTO RIMOSSO]');
   return text.slice(0, MAX_STATEMENT_CHARS);
 }
 

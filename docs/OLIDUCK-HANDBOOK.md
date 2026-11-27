@@ -146,11 +146,11 @@ Richiesta:
 
 - `challengeIds`: massimo 6; il client invia solo ID.
 - `message`: massimo 4.000 caratteri.
-- `history`: massimo 12 messaggi / 8.000 caratteri.
+- `history`: massimo 24 messaggi / 8.000 caratteri; il client invia le prime domande che stabiliscono l'argomento insieme agli scambi recenti.
 - `statementExcerpt`: facoltativo, massimo 2.000 caratteri; non inviare flag o soluzioni.
 - `challenge`: se inviato, viene ignorato.
 
-Risposta JSON o ultimo evento SSE include `reply`, `mode`, `model`, `challengeIds`, `challengeId` (o `general`), `intent`, `statementProvided`, `sources`, `statementStatus` (`unavailable`, `partial`, `user-provided`, `verified`), `catalogVerified`, `contextMode` (`general`, `single`, `multi`) e `challengeCount`; quando pertinenti anche `statementMissing`, `needsClarification`, `hintStage`, `personalContext` e `support`. In caso di rifiuto: `blocked: true`. In caso di ambiguità: `needsClarification: true` e nessun `blocked: true`. Errori: `400`, `403`, `413`, `415`, `429`, `502`, `503`, `504`.
+Risposta JSON o ultimo evento SSE include `reply`, `mode`, `model`, `challengeIds`, `challengeId` (o `general`), `intent`, `statementProvided`, `sources`, `statementStatus` (`unavailable`, `partial`, `user-provided`, `verified`), `catalogVerified`, `contextMode` (`general`, `single`, `multi`), `challengeCount`, `followUp`, `followUpKind`, `conversationTopic`, `technologies`, `previousIntent` (quando disponibile), `challengeLinkRequested`, `regenerated` e `incomplete`; quando pertinenti anche `statementMissing`, `needsClarification`, `hintStage`, `personalContext` e `support`. In caso di rifiuto: `blocked: true`. In caso di ambiguità: `needsClarification: true` e nessun `blocked: true`. Errori: `400`, `403`, `413`, `415`, `429`, `502`, `503`, `504`.
 
 Con il binding attivo la risposta è `text/event-stream`: ogni evento ha `reply` **cumulativo** e autorevole, non un delta. Il client accetta ancora il vecchio campo `token` per compatibilità.
 
@@ -158,7 +158,7 @@ Con il binding attivo la risposta è `text/event-stream`: ogni evento ha `reply`
 
 ## 6. Intenti didattici
 
-`functions/lib/intent.js` classifica il messaggio corrente senza chiamare il modello:
+`functions/lib/intent.js` classifica il messaggio corrente senza chiamare il modello; `functions/lib/conversation.js` può reinterpretare i riferimenti brevi in base alla cronologia. Gli intent possibili sono:
 
 | Intento | Comportamento |
 | --- | --- |
@@ -167,11 +167,14 @@ Con il binding attivo la risposta è `text/event-stream`: ogni evento ha `reply`
 | `request_hint` | Primo indizio mirato e domanda di verifica. |
 | `review_reasoning` | Valuta il metodo dello studente e fa una domanda mirata. |
 | `request_solution` | Rifiuto deterministico prima della chiamata al modello. |
-| `clarify` | Risposta fissa di chiarimento, senza modello e senza `blocked: true`. |
+| `clarify` | Chiarimento mirato, senza modello e senza `blocked: true`. |
+| `follow_up` | Il messaggio riprende il dialogo precedente («intendo Python», «in Flask», «fammi un esempio», «non ho capito», «continua», «e nella challenge?»): il modello riceve argomento, tecnologie menzionate e intento precedente in un blocco delimitato. |
 
-Regola critica: parole come `challenge`, `risolvere`, `HTTP`, `token`, `exploit` o `flag` **non bastano** a bloccare. Servono richieste esplicite di produrre flag/writeup/soluzione/payload/procedimento. Domande come “che cos'è una flag?” o “come funziona un payload HTTP?” restano `explain_concept`.
+Regola critica: parole come `challenge`, `risolvere`, `HTTP`, `token`, `exploit` o `flag` **non bastano** a bloccare. Servono richieste esplicite di produrre flag/writeup/soluzione/payload/procedimento. Domande come “che cos'è una flag?” o “come funziona un payload HTTP?” restano `explain_concept`. La classificazione contestuale non aggira i rifiuti: un «continua» dopo una richiesta di flag resta un `request_solution`.
 
-In caso di dubbio il tutor chiede chiarimenti: `CLARIFICATION_REPLY` viene generato deterministicamente con `needsClarification: true`, senza consumare quota AI.
+In caso di dubbio il tutor chiede chiarimenti in modo mirato (per esempio «Hai menzionato Python, ma non ho ancora il concetto a cui si riferisce»), con `needsClarification: true`, senza consumare quota AI e senza offrire un menu generico. Le precisazioni tecniche non fanno inventare framework: il tutor distingue `requests.Session()`, `flask.session` e sessioni Django solo se pertinenti e chiede l'implementazione dopo aver fornito tutte le informazioni deducibili.
+
+Se l'output è palesemente incompleto (elenchi vuoti, titoli senza contenuto, troncamenti, chiarimenti ripetuti), l'handler tenta una sola rigenerazione con lo stesso contesto; se non basta, risponde dichiarando il problema con `incomplete: true`, senza inventare il contenuto mancante.
 
 L'istruzione di intento viene inserita solo nel messaggio `system`, in un canale attendibile generato dal server. Il messaggio dell'utente, la cronologia, i documenti KB e l'estratto viaggiano in messaggi `user` separati da un confine casuale `BND-...` generato per ogni richiesta.
 
@@ -339,8 +342,9 @@ Workers AI è sempre remoto e può consumare quota anche in sviluppo locale: usa
 
 ## 16. Verifiche eseguite
 
-- `npm test`: **127 test, 127 passati, 0 falliti**.
+- `npm test`: **142 test, 142 passati, 0 falliti**.
 - `node --test tests/tutor-behavior-v2.test.mjs`: **13 test, 13 passati**, che coprono i 12 casi della rifinitura v2 e il parsing client dei metadati.
+- `node --test tests/conversation-awareness.test.mjs`: **15 test, 15 passati**, con mock AI che ispeziona `input.messages` (follow-up, tecnologie, chiarimento senza contesto, rigenerazione JSON/SSE, conversazione lunga, rifiuti).
 - `node --test tests/tutor-context-flow.test.mjs`: **4 test, 4 passati** (stato consegna, JSON/SSE, cambio challenge, parsing client).
 - `node --test tests/workspace-history.test.mjs`: **1 test, passato** (cronologia e collaborazione delle aree).
 - `tests/branding.test.mjs`: passato: logo originale e derivate presenti, proporzioni invariate e collegamenti ancora presenti in header, README, documentazione, chat iniziale, pannello tutor e icone.

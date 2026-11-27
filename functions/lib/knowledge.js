@@ -93,13 +93,22 @@ function snippetOf(text, queryTokens, maxChars) {
 /**
  * @param {object} options
  * @param {string} options.message testo scritto dallo studente
+ * @param {Array<{role: string, content: string}>} [options.history] cronologia: solo i messaggi dello studente influenzano il retrieval
+ * @param {string} [options.statement] consegna già incollata: contribuisce al recupero del concetto
  * @param {string[]} [options.categories] categorie autorizzate delle challenge selezionate
  * @param {string[]} [options.tags] tag autorizzati delle challenge selezionate
  */
 export function retrieveKnowledge({
-  message = '', categories = [], tags = [], limit = 3, snippetChars = 520,
+  message = '', history = [], statement = '', categories = [], tags = [], limit = 3, snippetChars = 520,
 } = {}) {
-  const queryTokens = expandedTokens(tokensOf(message));
+  // I follow-up brevi («fammi un esempio», «intendo Python») non contengono il
+  // concetto da recuperare: il tema viene dai messaggi precedenti rilevanti.
+  const previousQuestions = Array.isArray(history)
+    ? history.filter((item) => item?.role === 'user' && typeof item.content === 'string')
+      .slice(-4).reverse().map((item) => item.content)
+    : [];
+  const queryText = [message, statement, ...previousQuestions].join(' ');
+  const queryTokens = expandedTokens(tokensOf(queryText));
   const queryPhrase = phraseOf(message);
   const contextTokens = unique(tokensOf([...categories, ...tags].join(' '))).slice(0, 12);
   const maxResults = Math.max(1, Math.min(Number(limit) || 3, 5));

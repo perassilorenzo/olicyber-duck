@@ -7,8 +7,21 @@ import {
   GENERAL_CONVERSATION_ID, SELECTED_CHALLENGE_ID_PATTERN, CHAT_CONVERSATION_PREFIX,
 } from './store.js';
 
-const MAX_HISTORY = 12;
+const MAX_HISTORY = 20;
+const MAX_HISTORY_ANCHORS = 2;
 const MAX_EXCERPT_CHARS = 2000;
+
+/**
+ * Nelle conversazioni lunghe conserva le prime domande che stabiliscono
+ * l'argomento insieme agli scambi più recenti, mantenendo l'ordine originale.
+ */
+function historyForRequest(conversation) {
+  const older = conversation.slice(0, Math.max(0, conversation.length - MAX_HISTORY));
+  const anchors = older.filter((item) => item?.role === 'user').slice(0, MAX_HISTORY_ANCHORS);
+  const recent = conversation.slice(-MAX_HISTORY);
+  const kept = new Set([...anchors, ...recent]);
+  return conversation.filter((item) => kept.has(item)).map(({ role, content }) => ({ role, content }));
+}
 
 function node(tag, className, text) {
   const element = document.createElement(tag);
@@ -284,7 +297,7 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
     if (isRetry && conversation.at(-1)?.role === 'user' && conversation.at(-1)?.content === message) {
       conversation = conversation.slice(0, -1);
     }
-    const history = conversation.slice(-MAX_HISTORY).map(({ role, content }) => ({ role, content }));
+    const history = historyForRequest(conversation);
     if (!isRetry) {
       const metaPatch = {};
       if (statementExcerpt) metaPatch.statementExcerpt = statementExcerpt;
