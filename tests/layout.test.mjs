@@ -97,6 +97,14 @@ test('splitter: default 60/40, limiti 35–75%, minimi in pixel, reset e tab mob
   panels.apply(75);
   assert.equal(panels.width, 64);
 
+  // A larghezze troppo piccole per due pannelli la percentuale non viene
+  // alterata: le tab mobili mostrano un solo pannello per volta.
+  withWidth(workspace, 390);
+  doc.getElementById('reset-panels').click();
+  assert.equal(panels.width, 60);
+  assert.equal(doc.getElementById('splitter').getAttribute('aria-valuenow'), '60');
+  assert.equal(store.state.preferences.panelWidth, 60);
+
   // A schermo compatto esistono solo due tab e il pannello attivo è uno alla volta.
   dom.window.matchMedia = () => ({ matches: true, addListener() {}, removeListener() {} });
   doc.querySelector('[data-panel-tab="library"]').click();

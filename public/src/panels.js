@@ -28,7 +28,10 @@ export function createPanels({ store, onWidthChange }) {
     let lower = MIN_PANEL_WIDTH;
     let upper = MAX_PANEL_WIDTH;
     const { inner } = metrics();
-    if (inner > 0) {
+    // I minimi in pixel valgono solo quando c'è spazio per due pannelli reali:
+    // su mobile le tab mostrano un pannello alla volta e la percentuale resta
+    // invariata (35–75%), così il ritorno al desktop non trova valori assurdi.
+    if (inner >= MIN_DASHBOARD_PX + MIN_ASSISTANT_PX + SPLITTER_PX) {
       lower = Math.max(lower, Math.ceil((MIN_DASHBOARD_PX / inner) * 100));
       upper = Math.min(upper, Math.floor(((inner - MIN_ASSISTANT_PX - SPLITTER_PX) / inner) * 100));
     }
