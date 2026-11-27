@@ -59,14 +59,8 @@ function setAssistantCollapsed(collapsed, { persist = true } = {}) {
   if (!value) panels?.reflow();
 }
 
-function setTrainingOpen(open) {
-  byId('main-content').dataset.trainingOpen = String(Boolean(open));
-  history?.setActiveView(open ? 'training' : (byId('main-content').dataset.view || 'assistant'));
-}
-
-function setHistoryOpen(open) {
-  byId('main-content').dataset.historyOpen = String(Boolean(open));
-  byId('toggle-history').setAttribute('aria-expanded', String(Boolean(open)));
+function closeDialog(id) {
+  byId(id)?.close?.();
 }
 
 function refreshWorkspace() {
@@ -107,6 +101,8 @@ function askAssistant(challenge = getDetailChallenge()) {
 }
 
 function startNewChat() {
+  closeDialog('history-dialog');
+  closeDialog('training-dialog');
   assistant.newChat();
   setAssistantCollapsed(false);
   panels.setView('assistant');
@@ -203,11 +199,6 @@ async function init() {
     setAssistantCollapsed(!store.state.preferences.assistantCollapsed);
   });
   byId('restore-assistant').addEventListener('click', () => setAssistantCollapsed(false));
-  byId('toggle-history').addEventListener('click', () => {
-    setHistoryOpen(byId('main-content').dataset.historyOpen !== 'true');
-  });
-  byId('close-training').addEventListener('click', () => setTrainingOpen(false));
-
   assistant = createAssistant({
     store,
     getSelectedChallenges,
@@ -224,26 +215,14 @@ async function init() {
     store,
     onOpenConversation: (id) => {
       if (!assistant.openConversation(id)) return;
-      setTrainingOpen(false);
-      setHistoryOpen(false);
+      closeDialog('history-dialog');
+      closeDialog('training-dialog');
       if (panels.isCompact()) panels.setView('assistant');
       setAssistantCollapsed(false);
-      history.setActiveView('assistant');
       assistant.focus();
     },
     onNewChat: startNewChat,
     onDeleteConversation: (id) => assistant.deleteConversation(id),
-    onViewChange: (view) => {
-      if (view === 'training') {
-        setTrainingOpen(true);
-        return;
-      }
-      setTrainingOpen(false);
-      if (view === 'library' || view === 'assistant') {
-        panels.setView(view);
-        if (view === 'assistant') setAssistantCollapsed(false);
-      }
-    },
   });
 
   training = createTraining({
@@ -254,9 +233,8 @@ async function init() {
     onOpenDetails: openDetails,
     onAskAssistant: askAssistant,
     onOpenLibrary: () => {
-      setTrainingOpen(false);
+      closeDialog('training-dialog');
       panels.setView('library');
-      history.setActiveView('library');
     },
     onNewChat: startNewChat,
   });

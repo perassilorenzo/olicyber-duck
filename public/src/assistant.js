@@ -52,6 +52,7 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
   const cancelButton = byId('cancel-chat');
   const clearButton = byId('clear-chat');
   const contextLabel = byId('assistant-context-label');
+  const challengeLabel = byId('assistant-challenge-label');
   const contextChips = byId('assistant-context-chips');
   const status = byId('chat-status');
   const errorBox = byId('chat-error');
@@ -98,11 +99,22 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
   let active = null;
   let aiMode = null;
   let statusMessage = '';
+  /** Modifica di un messaggio utente in attesa di invio. */
+  let editing = null;
   const lastRequests = new Map();
+
+  function actionButton(label, onClick, ariaLabel) {
+    const button = node('button', 'chat-message__action', label);
+    button.type = 'button';
+    if (ariaLabel) button.setAttribute('aria-label', ariaLabel);
+    button.addEventListener('click', onClick);
+    return button;
+  }
 
   function messageNode(message, options = {}) {
     const wrapper = node('div', `chat-message chat-message--${message.role}`);
     if (options.greeting) wrapper.classList.add('chat-message--greeting');
+    if (message.id) wrapper.dataset.messageId = message.id;
     wrapper.append(node('span', 'chat-message__role', message.role === 'user' ? 'Tu' : 'OliDuck'));
     const bubble = node('div', 'chat-message__bubble');
     if (message.role === 'assistant') {
@@ -114,6 +126,23 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
     }
     wrapper.append(bubble);
     if (message.createdAt) wrapper.append(node('span', 'chat-message__time', formatTime(message.createdAt)));
+    if (message.id && !options.greeting && !active) {
+      const actions = node('span', 'chat-message__actions');
+      if (message.role === 'user') {
+        actions.append(actionButton(
+          'Modifica',
+          () => startEdit(message.id),
+          `Modifica il messaggio: ${shortTitle(message.content)}`,
+        ));
+      } else {
+        actions.append(actionButton(
+          'Rigenera',
+          () => regenerate(message.id),
+          'Rigenera questa risposta di OliDuck',
+        ));
+      }
+      wrapper.append(actions);
+    }
     return wrapper;
   }
 
@@ -175,6 +204,42 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
     log.scrollTop = log.scrollHeight;
   }
 
+  function setInputValue(value) {
+    input.value = String(value ?? '');
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight || input.style.height || 58, 140)}px`;
+  }
+
+  function startEdit(messageId) {
+    if (active) return;
+    const conversation = store.getConversation(key);
+    const index = conversation.findIndex((item) => item.id === messageId && item.role === 'user');
+    if (index < 0) return;
+    editing = { id: messageId, index, original: conversation[index].content };
+    setInputValue(conversation[index].content);
+    statusMessage = 'Modifica in corso: invia per aggiornare il messaggio e la risposta.';
+    hideError();
+    render();
+    input.focus();
+  }
+
+  function cancelEdit() {
+    editing = null;
+    statusMessage = '';
+    render();
+  }
+
+  function regenerate(messageId) {
+    if (active) return;
+    const conversation = store.getConversation(key);
+    const index = conversation.findIndex((item) => item.id === messageId && item.role === 'assistant');
+    if (index <= 0 || conversation[index - 1]?.role !== 'user') return;
+    store.truncateConversation(key, index);
+    editing = null;
+    input.value = '';
+    submit(conversation[index - 1].content, { skipAppend: true, useStoredContext: true });
+  }
+
   function render() {
     const busyHere = Boolean(active && active.key === key);
     const canChallenge = selections.length > 0;
@@ -193,6 +258,11 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
     contextLabel.textContent = mode === 'challenge' && titles.length
       ? `Challenge: ${titles.join(', ')}${suffix}`
       : `Modalità generale${titles.length ? ` · selezionate: ${titles.join(', ')}` : ''}${suffix}`;
+    if (challengeLabel) {
+      challengeLabel.textContent = mode === 'challenge' && titles.length
+        ? `Challenge: ${titles.join(', ')}`
+        : 'Tutor didattico · Generale';
+    }
     renderChips();
 
     log.replaceChildren();
@@ -206,7 +276,12 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
     sendButton.disabled = busyHere || !input.value.trim();
     cancelButton.hidden = !busyHere;
     input.disabled = busyHere;
+    status.replaceChildren();
     status.textContent = busyHere ? 'OliDuck sta rispondendo…' : statusMessage;
+    if (editing && !busyHere) {
+      const cancel = actionButton('Annulla modifica', cancelEdit, 'Annulla la modifica del messaggio');
+      status.append(' ', cancel);
+    }
     scrollToEnd();
   }
 
@@ -230,6 +305,7 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
       mode = 'general';
     }
     key = id;
+    editing = null;
     store.setActiveConversation(id);
     statusMessage = '';
     input.value = '';
@@ -276,18 +352,26 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
     render();
   }
 
-  async function submit(rawMessage, { isRetry = false } = {}) {
+  async function submit(rawMessage, { isRetry = false, skipAppend = false, useStoredContext = false } = {}) {
     const message = String(rawMessage || '').trim();
     if (!message || active) return;
     const previous = lastRequests.get(key);
-    const storedExcerpt = store.getConversationMeta(key).statementExcerpt || '';
+    const meta = store.getConversationMeta(key);
+    const storedExcerpt = meta.statementExcerpt || '';
     const statementExcerpt = isRetry
       ? (previous?.statementExcerpt || storedExcerpt)
       : (readStatementExcerpt() || storedExcerpt);
     statusMessage = '';
-    const requestChallengeIds = mode === 'challenge'
-      ? selections.map((challenge) => challenge.id)
-      : [];
+    const pendingEdit = editing && !skipAppend ? editing : null;
+    if (pendingEdit) {
+      store.replaceMessage(key, pendingEdit.id, message);
+      store.truncateConversation(key, pendingEdit.index + 1);
+      editing = null;
+    }
+    const storedIds = useStoredContext && meta.challengeIds.length
+      ? meta.challengeIds
+      : selections.map((challenge) => challenge.id);
+    const requestChallengeIds = mode === 'challenge' ? storedIds : [];
     if (mode === 'challenge' && !requestChallengeIds.length) {
       showError('Seleziona almeno una challenge per usare la modalità contestuale.');
       return;
@@ -298,10 +382,10 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
       conversation = conversation.slice(0, -1);
     }
     const history = historyForRequest(conversation);
-    if (!isRetry) {
+    if (!isRetry && !skipAppend && !pendingEdit) {
       const metaPatch = {};
       if (statementExcerpt) metaPatch.statementExcerpt = statementExcerpt;
-      if (isExplicitChat(key) && /^Nuova chat/.test(store.getConversationMeta(key).title)) {
+      if (isExplicitChat(key) && /^Nuova chat/.test(meta.title)) {
         metaPatch.title = shortTitle(message) || 'Chat';
       }
       if (Object.keys(metaPatch).length) store.setConversationMeta(key, metaPatch);
@@ -312,8 +396,7 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
     lastRequests.set(key, { message, statementExcerpt, challengeIds: [...requestChallengeIds] });
     hideError();
 
-    input.value = '';
-    input.style.height = '';
+    setInputValue('');
     clearStatementExcerpt();
     const typing = node('div', 'chat-message chat-message--assistant');
     typing.append(node('span', 'chat-message__role', 'OliDuck'));
@@ -406,6 +489,7 @@ export function createAssistant({ store, getSelectedChallenges, getChallenge, on
     if (isExplicitChat(key)) store.deleteConversation(key);
     else store.clearConversation(key);
     lastRequests.delete(key);
+    editing = null;
     statusMessage = '';
     hideError();
     openConversation(GENERAL_CONVERSATION_ID, { keepSelection: true });

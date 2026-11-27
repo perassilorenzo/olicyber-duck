@@ -30,8 +30,15 @@ test('cronologia chat: nuova chat, titoli, contesto, consegna persistente e coll
   globalThis.getComputedStyle = window.getComputedStyle.bind(window);
   window.localStorage.clear();
   window.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {} });
-  window.HTMLDialogElement.prototype.showModal = function showModal() {};
-  window.HTMLDialogElement.prototype.close = function close() {};
+  const dialogState = {};
+  window.HTMLDialogElement.prototype.showModal = function showModal() {
+    dialogState[this.id] = true;
+    this.open = true;
+  };
+  window.HTMLDialogElement.prototype.close = function close() {
+    dialogState[this.id] = false;
+    this.open = false;
+  };
 
   const payloads = [];
   globalThis.fetch = async (url, options) => {
@@ -58,12 +65,16 @@ test('cronologia chat: nuova chat, titoli, contesto, consegna persistente e coll
   const doc = window.document;
   const saved = () => JSON.parse(window.localStorage.getItem('oliduck:state'));
 
-  // La dashboard mostra dati reali del catalogo e la vista Training è richiamabile.
+  // La dashboard mostra dati reali del catalogo; Training e cronologia sono dialoghi.
   assert.match(doc.getElementById('training-body').textContent, /7/);
-  doc.querySelector('[data-sidebar-view="training"]').click();
-  assert.equal(doc.getElementById('main-content').dataset.trainingOpen, 'true');
+  assert.equal(doc.querySelector('[data-sidebar-view]'), null);
+  assert.equal(doc.getElementById('open-training').dataset.dialogOpen, 'training');
+  doc.getElementById('open-training').click();
+  assert.equal(dialogState['training-dialog'], true);
   doc.getElementById('close-training').click();
-  assert.equal(doc.getElementById('main-content').dataset.trainingOpen, 'false');
+  assert.equal(dialogState['training-dialog'], false);
+  doc.getElementById('toggle-history').click();
+  assert.equal(dialogState['history-dialog'], true);
 
   // Chat contestuale automatica.
   doc.querySelector('#challenge-list .challenge-item[data-id="demo-web-01"] .challenge-item__chat').click();

@@ -11,9 +11,10 @@ export const STORAGE_KEY = 'oliduck:state';
 export const SCHEMA_VERSION = 2;
 export const STATUSES = ['todo', 'in-progress', 'completed'];
 export const GENERAL_CONVERSATION_ID = 'general';
-export const DEFAULT_PANEL_WIDTH = 40;
-export const MIN_PANEL_WIDTH = 22;
-export const MAX_PANEL_WIDTH = 72;
+/** Dashboard CTF a sinistra: default 60/40, limiti 35–75% / 25–65%. */
+export const DEFAULT_PANEL_WIDTH = 60;
+export const MIN_PANEL_WIDTH = 35;
+export const MAX_PANEL_WIDTH = 75;
 export const MAX_SELECTED_CHALLENGES = 6;
 export const SELECTED_CHALLENGE_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 export const CHAT_CONVERSATION_PREFIX = 'chat:';
@@ -53,7 +54,7 @@ export function defaultState() {
       assistantCollapsed: false,
       filters: {
         query: '', category: 'all', difficulty: 'all', edition: 'all',
-        path: 'all', tag: 'all', status: 'all', sort: 'catalog',
+        path: 'all', tag: 'all', status: 'all', favorite: 'all', sort: 'catalog',
       },
     },
   };
@@ -77,7 +78,7 @@ function migrate(state) {
           query: typeof oldFilters.query === 'string' ? oldFilters.query : '',
           category: typeof oldFilters.category === 'string' ? oldFilters.category : 'all',
           difficulty: typeof oldFilters.difficulty === 'string' ? oldFilters.difficulty : 'all',
-          edition: 'all', path: 'all', tag: 'all', status: 'all', sort: 'catalog',
+          edition: 'all', path: 'all', tag: 'all', status: 'all', favorite: 'all', sort: 'catalog',
         },
       },
     };
@@ -173,7 +174,9 @@ export function normalizeState(raw) {
     ? state.favorites.filter((id) => typeof id === 'string' && SELECTED_CHALLENGE_ID_PATTERN.test(id))
     : [];
   const activeConversation = typeof state.activeConversation === 'string'
-    && (conversations[state.activeConversation] || state.activeConversation === GENERAL_CONVERSATION_ID)
+    && (conversations[state.activeConversation]
+      || state.activeConversation === GENERAL_CONVERSATION_ID
+      || state.activeConversation.startsWith('ctx:'))
     ? state.activeConversation
     : GENERAL_CONVERSATION_ID;
 
@@ -206,6 +209,7 @@ export function normalizeState(raw) {
         path: typeof filters.path === 'string' ? filters.path : 'all',
         tag: typeof filters.tag === 'string' ? filters.tag : 'all',
         status: STATUSES.includes(filters.status) ? filters.status : 'all',
+        favorite: filters.favorite === 'favorites' ? 'favorites' : 'all',
         sort: allowedSorts.includes(filters.sort) ? filters.sort : 'catalog',
       },
     },
@@ -297,6 +301,28 @@ export class LocalStore {
     });
   }
 
+  /**
+   * Sostituisce il testo di un messaggio esistente. Usato dalla modifica di un
+   * messaggio utente: l'ID resta stabile, gli altri messaggi non vengono toccati.
+   */
+  replaceMessage(id, messageId, content) {
+    if (typeof id !== 'string' || typeof messageId !== 'string' || typeof content !== 'string') return false;
+    const clean = content.trim().slice(0, 20000);
+    if (!clean) return false;
+    let replaced = false;
+    this.update((draft) => {
+      const list = draft.conversations[id] || [];
+      const message = list.find((item) => item.id === messageId);
+      if (!message || message.role !== 'user') return;
+      message.content = clean;
+      replaced = true;
+      draft.conversationMeta[id] = draft.conversationMeta[id]
+        || normalizeConversationMeta({ challengeIds: challengeIdsFromKey(id) });
+      draft.conversationMeta[id].updatedAt = new Date().toISOString();
+    });
+    return replaced;
+  }
+
   /** Metadati completi: quelli salvati, con fallback per le chiavi storiche. */
   getConversationMeta(id) {
     const key = typeof id === 'string' ? id : GENERAL_CONVERSATION_ID;
@@ -380,7 +406,9 @@ export class LocalStore {
 
   setActiveConversation(id) {
     if (typeof id !== 'string') return;
-    if (id !== GENERAL_CONVERSATION_ID && !this.state.conversations[id]) return;
+    // Le chat contestuali automatiche possono essere attive anche prima del
+    // primo messaggio: la conversazione verrà creata al primo invio.
+    if (id !== GENERAL_CONVERSATION_ID && !this.state.conversations[id] && !id.startsWith('ctx:')) return;
     if (this.state.activeConversation === id) return;
     this.update((draft) => { draft.activeConversation = id; });
   }

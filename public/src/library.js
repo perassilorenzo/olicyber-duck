@@ -1,4 +1,4 @@
-/** Libreria v2: card compatte in ordine dataset, filtri derivati e navigazione da tastiera. */
+/** Dashboard CTF: categorie reali, card compatte, filtri derivati e preferiti. */
 
 import { byId, toast } from './utils.js';
 import { MAX_SELECTED_CHALLENGES } from './store.js';
@@ -7,20 +7,15 @@ import {
   DEFAULT_SORT, SORT_OPTIONS, deriveFacets, filterChallenges, sortChallenges,
 } from './catalog.js';
 
-const STATUS_LABELS = { todo: 'Da fare', 'in-progress': 'In corso', completed: 'Completata' };
+const STATUS_LABELS = { todo: 'Da fare', 'in-progress': 'In corso', completed: 'Risolta' };
+const CTF_STATUS = { todo: 'unsolved', 'in-progress': 'in-progress', completed: 'solved' };
 
-/** Altezza di una card più il margine: usata dalla lista virtualizzata. */
-export const ROW_HEIGHT = 132;
-const OVERSCAN = 4;
+/** Altezza indicativa usata solo per lo scroll da tastiera (nessuna virtualizzazione). */
+export const ROW_HEIGHT = 168;
 
 const DEFAULT_FILTERS = {
   query: '', category: 'all', difficulty: 'all', edition: 'all',
-  path: 'all', tag: 'all', status: 'all', sort: DEFAULT_SORT,
-};
-
-const STATE_LABELS = {
-  online: 'Online',
-  'non disponibile': 'Non disponibile',
+  path: 'all', tag: 'all', status: 'all', favorite: 'all', sort: DEFAULT_SORT,
 };
 
 function node(tag, className, text) {
@@ -35,23 +30,8 @@ function itemNumber(challenge) {
   return String(challenge.id || '').replace(/^olicyber-/, '');
 }
 
-function reliableState(challenge) {
-  if (typeof challenge.state === 'string' && challenge.state.trim()) return challenge.state.trim();
-  if (challenge.available === false) return 'non disponibile';
-  return null;
-}
-
-function sourceAvailable(challenge) {
-  const state = reliableState(challenge);
-  return state ? state.toLocaleLowerCase('it') !== 'non disponibile' : challenge.available !== false;
-}
-
-function stateLabel(state) {
-  return STATE_LABELS[state.toLocaleLowerCase('it')] || state;
-}
-
-function detailRow(label, value, className = 'challenge-item__extras-item') {
-  const row = node('span', className);
+function detailRow(label, value) {
+  const row = node('span', 'challenge-item__extras-item');
   row.append(node('span', 'challenge-item__extras-label', label), node('span', null, value));
   return row;
 }
@@ -60,6 +40,8 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
   const list = byId('challenge-list');
   const items = byId('challenge-items');
   const count = byId('challenge-count');
+  const titleNumbers = byId('dashboard-title-numbers');
+  const summary = byId('dashboard-summary');
   const search = byId('search-input');
   const selects = {
     category: byId('category-filter'),
@@ -68,11 +50,11 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
     path: byId('path-filter'),
     tag: byId('tag-filter'),
     status: byId('status-filter'),
+    favorite: byId('favorite-filter'),
     sort: byId('sort-filter'),
   };
   const facets = deriveFacets(challenges);
   let visible = [];
-  let focusIndex = 0;
 
   function fillSelect(select, values, allLabel) {
     select.replaceChildren(node('option', null, allLabel));
@@ -108,13 +90,11 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
     const current = store.state.preferences.filters;
     search.value = current.query || '';
     for (const key of Object.keys(selects)) {
-      selects[key].value = isAllowedFilter(key, current[key])
-        ? current[key]
-        : DEFAULT_FILTERS[key];
+      selects[key].value = isAllowedFilter(key, current[key]) ? current[key] : DEFAULT_FILTERS[key];
     }
   }
 
-  /** Allinea i filtri persistiti alle facet effettive, dopo che la libreria è pronta. */
+  /** Allinea i filtri persistiti alle facet effettive, dopo la dashboard pronta. */
   function correctFilters() {
     const current = store.state.preferences.filters;
     const corrections = {};
@@ -136,22 +116,23 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
   function itemNode(challenge, index) {
     const status = store.getStatus(challenge.id);
     const selected = store.getSelectedChallengeIds().includes(challenge.id);
+    const favorite = store.isFavorite(challenge.id);
     const provenance = challengeProvenance(challenge);
-    const wrapper = node('article', 'challenge-item');
+    const wrapper = node('article', 'challenge-item ctf-card');
     wrapper.dataset.id = challenge.id;
     wrapper.dataset.index = String(index);
+    wrapper.dataset.category = challenge.category || 'Altro';
     wrapper.setAttribute('role', 'listitem');
     wrapper.setAttribute('aria-posinset', String(index + 1));
     wrapper.setAttribute('aria-setsize', String(visible.length));
     wrapper.classList.toggle('is-selected', selected);
-    wrapper.style.top = `${index * ROW_HEIGHT}px`;
 
     const main = node('button', 'challenge-item__main');
     main.type = 'button';
     main.setAttribute('aria-label', `Apri i dettagli di ${challenge.title}`);
     main.addEventListener('click', () => onOpenDetails(challenge));
 
-    const head = node('span', 'challenge-item__head');
+    const head = node('span', 'ctf-card__head');
     head.append(node('span', 'challenge-item__number', `#${itemNumber(challenge)}`));
     head.append(node('span', 'challenge-item__title', challenge.title));
     head.append(node(
@@ -161,47 +142,51 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
     ));
     main.append(head);
 
-    const meta = node('span', 'challenge-item__meta');
-    if (challenge.category) meta.append(node('span', 'tag tag--category', challenge.category));
-    if (challenge.difficulty) {
-      const tag = node('span', 'tag tag--difficulty', challenge.difficulty);
-      tag.dataset.difficulty = challenge.difficulty;
-      meta.append(tag);
-    }
-    for (const tag of (challenge.tags || []).slice(0, 2)) meta.append(node('span', 'tag', tag));
-    if ((challenge.tags || []).length > 2) {
-      meta.append(node('span', 'challenge-item__detail', `+${challenge.tags.length - 2}`));
-    }
-    if (challenge.score !== null && challenge.score !== undefined) {
-      meta.append(node('span', 'challenge-item__score', `${challenge.score} pt`));
-    }
-    const sourceState = reliableState(challenge);
-    if (sourceState) {
-      const state = node('span', 'challenge-item__state', stateLabel(sourceState));
-      state.dataset.available = String(sourceAvailable(challenge));
-      meta.append(state);
-    }
-    const statusNode = node('span', 'challenge-item__status');
-    const dot = node('span', 'status-dot');
-    dot.dataset.status = status;
-    dot.setAttribute('aria-hidden', 'true');
-    statusNode.append(dot, node('span', null, STATUS_LABELS[status]));
-    meta.append(statusNode);
-    main.append(meta);
-
     const description = challenge.description || challenge.statement;
-    if (description) main.append(node('span', 'challenge-item__description', description));
+    if (description) main.append(node('span', 'ctf-card__description', description));
+
+    const badges = node('span', 'ctf-card__badges');
+    if (challenge.score !== null && challenge.score !== undefined) {
+      badges.append(node('span', 'ctf-badge ctf-badge--points', `${challenge.score} pt`));
+    }
+    if (Number.isFinite(challenge.metadata?.solves)) {
+      badges.append(node(
+        'span', 'ctf-badge ctf-badge--solves',
+        `${new Intl.NumberFormat('it-IT').format(challenge.metadata.solves)} risoluzioni`,
+      ));
+    }
+    if (challenge.category) badges.append(node('span', 'ctf-tag ctf-tag--category', challenge.category));
+    for (const tag of (challenge.tags || []).slice(0, 2)) badges.append(node('span', 'ctf-tag', tag));
+    if ((challenge.tags || []).length > 2) {
+      badges.append(node('span', 'ctf-card__more', `+${challenge.tags.length - 2}`));
+    }
+    main.append(badges);
 
     const extras = node('span', 'challenge-item__extras');
-    if (Number.isFinite(challenge.metadata?.solves)) {
-      extras.append(detailRow('Risolte', new Intl.NumberFormat('it-IT').format(challenge.metadata.solves)));
-    }
     if (challenge.author) extras.append(detailRow('Autore', challenge.author));
     const attachments = Array.isArray(challenge.attachments) ? challenge.attachments.length : 0;
     if (attachments) extras.append(detailRow('Allegati', attachments));
     if (challenge.edition) extras.append(detailRow('Edizione', challenge.edition));
     if (challenge.path) extras.append(detailRow('Percorso', challenge.path));
     if (extras.childElementCount) main.append(extras);
+    wrapper.append(main);
+
+    const actions = node('span', 'ctf-card__actions');
+    const statusNode = node('span', 'ctf-status', STATUS_LABELS[status]);
+    statusNode.dataset.status = CTF_STATUS[status];
+    actions.append(statusNode);
+
+    const buttons = node('span', 'ctf-card__buttons');
+    const star = node('button', 'ctf-card__favorite', favorite ? '★' : '☆');
+    star.type = 'button';
+    star.setAttribute('aria-pressed', String(favorite));
+    star.setAttribute('aria-label', favorite
+      ? `Rimuovi ${challenge.title} dai preferiti`
+      : `Aggiungi ${challenge.title} ai preferiti`);
+    star.addEventListener('click', () => {
+      store.toggleFavorite(challenge.id);
+      render();
+    });
 
     const chat = node('button', 'challenge-item__chat', 'Chat');
     chat.type = 'button';
@@ -222,94 +207,103 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
       const nowSelected = store.toggleChallengeSelection(challenge.id);
       onSelect?.(challenge, nowSelected);
     });
-
-    wrapper.append(main, chat);
+    buttons.append(star, chat);
+    actions.append(buttons);
+    wrapper.append(actions);
     return wrapper;
-  }
-
-  function activeRowInfo() {
-    const active = document.activeElement;
-    const row = active?.closest?.('.challenge-item');
-    if (!row) return null;
-    return {
-      id: row.dataset.id,
-      part: active.classList.contains('challenge-item__chat') ? 'chat' : 'main',
-    };
   }
 
   function clearFilters() {
     store.update((draft) => { draft.preferences.filters = { ...DEFAULT_FILTERS }; });
   }
 
-  function paint() {
-    const height = list.clientHeight || 0;
-    const canVirtualize = height > 0 && visible.length > Math.ceil(height / ROW_HEIGHT) + OVERSCAN * 2;
-    let first = 0;
-    let last = visible.length;
-    if (canVirtualize) {
-      first = Math.max(0, Math.floor(list.scrollTop / ROW_HEIGHT) - OVERSCAN);
-      last = Math.min(visible.length, Math.ceil((list.scrollTop + height) / ROW_HEIGHT) + OVERSCAN);
+  function renderNumbers() {
+    const total = challenges.length;
+    const categories = facets.categories.length || (total ? 1 : 0);
+    if (titleNumbers) titleNumbers.textContent = `${total} challenge · ${categories} categorie`;
+    if (!summary) return;
+    let solved = 0;
+    let inProgress = 0;
+    for (const challenge of challenges) {
+      const status = store.getStatus(challenge.id);
+      if (status === 'completed') solved += 1;
+      else if (status === 'in-progress') inProgress += 1;
     }
-    const active = activeRowInfo();
-    items.style.height = `${visible.length * ROW_HEIGHT}px`;
-    items.replaceChildren(...visible.slice(first, last).map((challenge, offset) => itemNode(challenge, first + offset)));
+    summary.textContent = `${total} challenge · ${solved} risolte · ${inProgress} in corso · ${total - solved - inProgress} da fare`;
+  }
 
-    if (!visible.length) {
-      items.style.height = 'auto';
-      const empty = node('div', 'empty-list');
-      empty.append(
-        node('p', 'empty-list__title', 'Nessuna challenge corrisponde ai filtri selezionati.'),
-        node('p', 'empty-list__hint', 'Prova a cambiare ricerca, categoria o tag.'),
-      );
-      const reset = node('button', 'btn btn--outline btn--sm', 'Azzera filtri');
-      reset.type = 'button';
-      reset.addEventListener('click', clearFilters);
-      empty.append(reset);
-      items.append(empty);
-      return;
-    }
-
-    if (active) {
-      const row = [...items.children].find((element) => element.dataset.id === active.id);
-      const selector = active.part === 'chat' ? '.challenge-item__chat' : '.challenge-item__main';
-      row?.querySelector(selector)?.focus({ preventScroll: true });
-    }
+  function categoryGroups() {
+    const groups = new Map();
+    visible.forEach((challenge, index) => {
+      const name = challenge.category || 'Altro';
+      if (!groups.has(name)) groups.set(name, { name, items: [] });
+      groups.get(name).items.push({ challenge, index });
+    });
+    return [...groups.values()].sort((a, b) => (
+      b.items.length - a.items.length || a.name.localeCompare(b.name, 'it', { sensitivity: 'base' })
+    ));
   }
 
   function render({ resetScroll = false } = {}) {
     const previousScroll = list.scrollTop;
     visible = sortChallenges(filterChallenges(
-      challenges, currentFilters(), (id) => store.getStatus(id),
+      challenges, currentFilters(), (id) => store.getStatus(id), (id) => store.isFavorite(id),
     ), selects.sort.value);
     const orderLabel = selects.sort.value === DEFAULT_SORT ? ' · ordine del catalogo' : '';
     count.textContent = `${visible.length} challenge${visible.length === 1 ? '' : 's'}${orderLabel}`;
+    renderNumbers();
 
-    items.style.height = `${visible.length * ROW_HEIGHT}px`;
-    const maxScroll = Math.max(0, visible.length * ROW_HEIGHT - (list.clientHeight || 0));
-    list.scrollTop = resetScroll ? 0 : Math.min(previousScroll, maxScroll);
-    paint();
+    const groups = categoryGroups();
+    const nodes = groups.map((group) => {
+      const section = node('section', 'ctf-category');
+      const header = node('header', 'ctf-category__header');
+      header.append(node('h2', null, group.name));
+      const solved = group.items.filter(({ challenge }) => store.getStatus(challenge.id) === 'completed').length;
+      header.append(node(
+        'span', 'ctf-category__count',
+        `${group.items.length} challenge · ${solved} risolte`,
+      ));
+      section.append(header);
+      const grid = node('div', 'ctf-grid');
+      for (const { challenge, index } of group.items) grid.append(itemNode(challenge, index));
+      section.append(grid);
+      return section;
+    });
+
+    if (visible.length) {
+      items.replaceChildren(...nodes);
+    } else {
+      const empty = node('div', 'empty-list');
+      empty.append(
+        node('p', 'empty-list__title', 'Nessuna challenge corrisponde ai filtri selezionati.'),
+        node('p', 'empty-list__hint', 'Prova a cambiare ricerca, categoria o preferiti.'),
+      );
+      const reset = node('button', 'btn btn--outline btn--sm', 'Azzera filtri');
+      reset.type = 'button';
+      reset.addEventListener('click', clearFilters);
+      empty.append(reset);
+      items.replaceChildren(empty);
+    }
+    // Il browser applica i limiti reali di scrollHeight: qui non li calcoliamo,
+    // così un aggiornamento di stato non riporta in alto la dashboard.
+    list.scrollTop = resetScroll ? 0 : previousScroll;
   }
 
   function focusItem(index) {
     if (!visible.length) return;
-    focusIndex = Math.min(visible.length - 1, Math.max(0, index));
-    const top = focusIndex * ROW_HEIGHT;
-    const bottom = top + ROW_HEIGHT;
+    const next = Math.min(visible.length - 1, Math.max(0, index));
+    const row = [...items.querySelectorAll('.challenge-item')]
+      .find((element) => Number(element.dataset.index) === next);
+    row?.querySelector('.challenge-item__main')?.focus({ preventScroll: true });
+    const top = next * ROW_HEIGHT;
     const height = list.clientHeight || 0;
     if (height > 0 && top < list.scrollTop) list.scrollTop = top;
-    else if (height > 0 && bottom > list.scrollTop + height) list.scrollTop = bottom - height;
-    paint();
-    const row = [...items.children].find((element) => Number(element.dataset.index) === focusIndex);
-    row?.querySelector('.challenge-item__main')?.focus({ preventScroll: true });
+    else if (height > 0 && top + ROW_HEIGHT > list.scrollTop + height) list.scrollTop = top + ROW_HEIGHT - height;
   }
 
-  search.addEventListener('input', () => {
-    store.setFilter('query', search.value);
-  });
+  search.addEventListener('input', () => store.setFilter('query', search.value));
   for (const [key, select] of Object.entries(selects)) {
-    select.addEventListener('change', () => {
-      store.setFilter(key, select.value);
-    });
+    select.addEventListener('change', () => store.setFilter(key, select.value));
   }
   list.addEventListener('keydown', (event) => {
     if (!visible.length) return;
@@ -324,7 +318,6 @@ export function createLibrary({ store, challenges, onSelect, onOpenDetails }) {
     event.preventDefault();
     focusItem(next);
   });
-  list.addEventListener('scroll', paint, { passive: true });
   byId('clear-filters').addEventListener('click', clearFilters);
 
   syncFilterControls();

@@ -80,6 +80,45 @@ function appendInline(parent, text) {
   if (cursor < source.length) parent.append(document.createTextNode(source.slice(cursor)));
 }
 
+/** Pulsante di copia: il testo resta un dato, mai interpretato come HTML. */
+function codeBlock(code) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'code-block';
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.className = 'code-copy';
+  copy.textContent = 'Copia';
+  copy.setAttribute('aria-label', 'Copia il blocco di codice');
+  copy.addEventListener('click', async () => {
+    const text = code.textContent;
+    let copied = false;
+    try {
+      if (globalThis.navigator?.clipboard?.writeText) {
+        await globalThis.navigator.clipboard.writeText(text);
+        copied = true;
+      } else {
+        const area = document.createElement('textarea');
+        area.value = text;
+        area.setAttribute('readonly', '');
+        area.style.position = 'fixed';
+        area.style.opacity = '0';
+        document.body.append(area);
+        area.select();
+        copied = document.execCommand?.('copy') === true;
+        area.remove();
+      }
+    } catch {
+      copied = false;
+    }
+    copy.textContent = copied ? 'Copiato' : 'Copia non riuscita';
+    globalThis.setTimeout?.(() => { copy.textContent = 'Copia'; }, 1400);
+  });
+  const pre = document.createElement('pre');
+  pre.append(code);
+  wrapper.append(copy, pre);
+  return wrapper;
+}
+
 function appendParagraph(parent, lines) {
   const paragraph = document.createElement('p');
   lines.forEach((line, index) => {
@@ -124,8 +163,7 @@ export function renderMarkdownInto(container, value) {
       const language = fence[1] && /^[a-zA-Z0-9+#._-]{1,24}$/.test(fence[1]) ? fence[1] : '';
       if (language) code.classList.add(`language-${language}`);
       code.textContent = body.join('\n');
-      pre.append(code);
-      target.append(pre);
+      target.append(codeBlock(code));
       continue;
     }
 

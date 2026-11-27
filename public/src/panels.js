@@ -6,8 +6,8 @@ import {
 } from './store.js';
 import { effectiveAssistantPercent, SPLITTER_PX } from './layout.js';
 
-const MIN_LIBRARY_PX = 320;
-const MIN_ASSISTANT_PX = 380;
+const MIN_DASHBOARD_PX = 360;
+const MIN_ASSISTANT_PX = 340;
 
 export function createPanels({ store, onWidthChange }) {
   const workspace = byId('main-content');
@@ -29,7 +29,7 @@ export function createPanels({ store, onWidthChange }) {
     let upper = MAX_PANEL_WIDTH;
     const { inner } = metrics();
     if (inner > 0) {
-      lower = Math.max(lower, Math.ceil((MIN_LIBRARY_PX / inner) * 100));
+      lower = Math.max(lower, Math.ceil((MIN_DASHBOARD_PX / inner) * 100));
       upper = Math.min(upper, Math.floor(((inner - MIN_ASSISTANT_PX - SPLITTER_PX) / inner) * 100));
     }
     upper = Math.max(lower, upper);
@@ -40,7 +40,7 @@ export function createPanels({ store, onWidthChange }) {
 
   function apply(value, { persist = true } = {}) {
     current = clamp(value);
-    workspace.style.setProperty('--library-width', `${current}%`);
+    workspace.style.setProperty('--dashboard-width', `${current}%`);
     splitter.setAttribute('aria-valuenow', String(current));
     if (range) range.value = String(current);
     onWidthChange?.(current, effectiveAssistantPercent(current, metrics().inner, SPLITTER_PX));
@@ -50,7 +50,7 @@ export function createPanels({ store, onWidthChange }) {
 
   function reset() {
     apply(DEFAULT_PANEL_WIDTH);
-    toast('Larghezze predefinite ripristinate (40% / 60%).');
+    toast('Larghezze predefinite ripristinate (60% / 40%).');
   }
 
   function isCompact() {
@@ -101,11 +101,11 @@ export function createPanels({ store, onWidthChange }) {
   // ---- Pulsanti di espansione ----
   byId('expand-library')?.addEventListener('click', () => {
     apply(MAX_PANEL_WIDTH);
-    toast('Challenge Library espansa.');
+    toast('Dashboard espansa.');
   });
   byId('expand-assistant')?.addEventListener('click', () => {
     apply(MIN_PANEL_WIDTH);
-    toast('OliDuck espanso.');
+    toast('Tutor espanso.');
   });
   byId('reset-panels')?.addEventListener('click', reset);
 

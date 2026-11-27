@@ -1,4 +1,4 @@
-/** NavLaterale: navigazione delle viste e cronologia chat persistente. */
+/** Cronologia chat persistente, ospitata in un dialogo compatto. */
 
 import { byId, confirmDialog } from './utils.js';
 import { GENERAL_CONVERSATION_ID } from './store.js';
@@ -17,7 +17,7 @@ function formatWhen(value) {
   return date.toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-export function createHistory({ store, onOpenConversation, onNewChat, onDeleteConversation, onViewChange }) {
+export function createHistory({ store, onOpenConversation, onNewChat, onDeleteConversation }) {
   const lists = {
     challenge: byId('chat-history-challenge'),
     general: byId('chat-history-general'),
@@ -26,8 +26,6 @@ export function createHistory({ store, onOpenConversation, onNewChat, onDeleteCo
     challenge: byId('history-challenge-count'),
     general: byId('history-general-count'),
   };
-  const navButtons = [...document.querySelectorAll('[data-sidebar-view]')];
-
   function historyItem(meta, activeId) {
     const item = node('div', 'history-item');
     item.setAttribute('role', 'listitem');
@@ -105,19 +103,5 @@ export function createHistory({ store, onOpenConversation, onNewChat, onDeleteCo
 
   byId('new-chat')?.addEventListener('click', () => onNewChat?.());
 
-  for (const button of navButtons) {
-    button.addEventListener('click', () => {
-      const view = button.dataset.sidebarView;
-      for (const item of navButtons) item.setAttribute('aria-pressed', String(item === button));
-      onViewChange?.(view);
-    });
-  }
-
-  function setActiveView(view) {
-    for (const button of navButtons) {
-      button.setAttribute('aria-pressed', String(button.dataset.sidebarView === view));
-    }
-  }
-
-  return { render, setActiveView, openDefault: () => onOpenConversation?.(GENERAL_CONVERSATION_ID) };
+  return { render, openDefault: () => onOpenConversation?.(GENERAL_CONVERSATION_ID) };
 }

@@ -117,10 +117,10 @@ function searchable(challenge) {
   ].filter(Boolean).join(' ').toLocaleLowerCase('it');
 }
 
-export function filterChallenges(challenges, filters = {}, statusOf = () => 'todo') {
+export function filterChallenges(challenges, filters = {}, statusOf = () => 'todo', isFavoriteOf = () => false) {
   const {
     query = '', category = 'all', difficulty = 'all', edition = 'all',
-    path = 'all', status = 'all', tag = 'all',
+    path = 'all', status = 'all', tag = 'all', favorite = 'all',
   } = filters;
   const needle = String(query).trim().toLocaleLowerCase('it');
   return challenges.filter((challenge) => {
@@ -130,6 +130,7 @@ export function filterChallenges(challenges, filters = {}, statusOf = () => 'tod
     if (path !== 'all' && challenge.path !== path) return false;
     if (tag !== 'all' && !(Array.isArray(challenge.tags) && challenge.tags.includes(tag))) return false;
     if (status !== 'all' && statusOf(challenge.id) !== status) return false;
+    if (favorite === 'favorites' && !isFavoriteOf(challenge.id)) return false;
     return !needle || searchable(challenge).includes(needle);
   });
 }

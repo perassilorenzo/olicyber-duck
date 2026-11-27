@@ -25,18 +25,28 @@ function sseResponse(tokens) {
   return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } });
 }
 
-test('la shell ha tre aree, splitter, drawer e cronologia chat', () => {
+test('la shell ha esattamente due pannelli, splitter 60/40, dialoghi e drawer', () => {
   const dom = new JSDOM(html);
   const { document: doc } = dom.window;
   assert.equal(doc.querySelectorAll('main > .panel').length, 2);
-  assert.ok(doc.getElementById('history-sidebar'));
-  assert.ok(doc.getElementById('training-panel'));
   assert.ok(doc.getElementById('library-panel'));
   assert.ok(doc.getElementById('assistant-panel'));
+  assert.equal(doc.getElementById('history-sidebar'), null);
+  assert.equal(doc.getElementById('training-panel'), null);
   assert.equal(doc.getElementById('workspace-panel'), null);
-  assert.ok(doc.getElementById('splitter'));
+  assert.equal(doc.getElementById('history-dialog').tagName, 'DIALOG');
+  assert.equal(doc.getElementById('training-dialog').tagName, 'DIALOG');
+  assert.equal(doc.querySelectorAll('main > dialog').length, 0);
+  assert.equal(doc.querySelectorAll('[data-sidebar-view]').length, 0);
+  const workspace = doc.getElementById('main-content');
+  assert.match(workspace.getAttribute('style'), /--dashboard-width:\s*60%/);
+  const splitter = doc.getElementById('splitter');
+  assert.equal(splitter.getAttribute('aria-valuemin'), '35');
+  assert.equal(splitter.getAttribute('aria-valuemax'), '75');
+  assert.equal(splitter.getAttribute('aria-valuenow'), '60');
+  assert.equal(doc.getElementById('panel-width-setting').min, '35');
+  assert.equal(doc.getElementById('panel-width-setting').max, '75');
   assert.equal(doc.querySelectorAll('[data-panel-tab]').length, 2);
-  assert.equal(doc.querySelectorAll('[data-sidebar-view]').length, 3);
   assert.ok(doc.getElementById('new-chat'));
   assert.ok(doc.getElementById('chat-history-challenge'));
   assert.ok(doc.getElementById('chat-history-general'));
@@ -47,6 +57,7 @@ test('la shell ha tre aree, splitter, drawer e cronologia chat', () => {
   assert.ok(doc.getElementById('chat-input'));
   assert.ok(doc.getElementById('mode-general'));
   assert.ok(doc.getElementById('mode-challenge'));
+  assert.ok(doc.getElementById('assistant-challenge-label'));
   dom.window.close();
 });
 
@@ -112,7 +123,7 @@ test('workspace completo: libreria, dettagli, chat contestuale, generale, errori
   slider.dispatchEvent(new window.Event('input', { bubbles: true }));
   slider.dispatchEvent(new window.Event('change', { bubbles: true }));
   await wait();
-  assert.match(doc.getElementById('main-content').style.getPropertyValue('--library-width'), /^55%/);
+  assert.match(doc.getElementById('main-content').style.getPropertyValue('--dashboard-width'), /^55%$/);
   assert.equal(doc.getElementById('assistant-width-value').textContent, '45%');
   const saved = JSON.parse(window.localStorage.getItem('oliduck:state'));
   assert.equal(saved.preferences.panelWidth, 55);

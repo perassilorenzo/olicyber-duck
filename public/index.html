@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="OliDuck — libreria di challenge e tutor AI per prepararsi alle Olimpiadi Italiane di Cybersicurezza." />
+    <meta name="description" content="OliDuck — dashboard CTF e tutor AI per prepararsi alle Olimpiadi Italiane di Cybersicurezza." />
     <meta name="theme-color" content="#1b4778" />
     <title>OliDuck — OliCyber Training Assistant</title>
     <link rel="icon" href="/favicon.ico" sizes="any" />
@@ -26,6 +26,7 @@
       </div>
 
       <nav class="topnav" aria-label="Navigazione principale">
+        <button type="button" class="topnav__link" data-dialog-open="training" id="open-training">Training</button>
         <button type="button" class="topnav__link" data-dialog-open="about">Informazioni</button>
         <button type="button" class="topnav__link" data-dialog-open="settings">Impostazioni</button>
       </nav>
@@ -35,96 +36,46 @@
           <span class="ai-status__dot" aria-hidden="true"></span>
           <span id="ai-status-label">Assistente: verifica…</span>
         </div>
-        <button type="button" class="icon-btn topbar__history-toggle" id="toggle-history" aria-label="Apri la cronologia" aria-controls="history-sidebar" aria-expanded="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
+        <button type="button" class="icon-btn topbar__history-toggle" id="toggle-history" data-dialog-open="history" aria-label="Apri la cronologia delle chat" title="Cronologia chat">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v4l3 2M4 6h16M4 12h16M4 18h10" /><circle cx="12" cy="12" r="9" /></svg>
         </button>
         <button type="button" class="btn btn--ghost btn--sm topbar__assistant" id="focus-assistant">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" /></svg>
-          Assistente
+          Tutor
         </button>
       </div>
     </header>
 
     <nav class="mobile-tabs" aria-label="Pannelli dell'area di lavoro">
-      <button type="button" data-panel-tab="library" role="tab" aria-selected="false" tabindex="-1">Libreria</button>
-      <button type="button" data-panel-tab="assistant" role="tab" aria-selected="true" tabindex="0">Assistant</button>
+      <button type="button" data-panel-tab="library" role="tab" aria-selected="false" tabindex="-1">Dashboard</button>
+      <button type="button" data-panel-tab="assistant" role="tab" aria-selected="true" tabindex="0">Chat</button>
     </nav>
 
-    <main id="main-content" class="workspace" data-view="assistant" data-assistant-collapsed="false" data-training-open="false" data-history-open="false" style="--library-width: 40%">
-      <!-- A. NavLaterale: navigazione, nuove chat e cronologia persistente. -->
-      <aside class="history-sidebar" id="history-sidebar" aria-label="Navigazione e cronologia chat">
-        <div class="history-sidebar__head">
-          <img class="history-sidebar__mark" src="/assets/brand/oliduck-logo-mark.png" alt="" aria-hidden="true" width="340" height="340" />
-          <div>
-            <p class="eyebrow">Workspace</p>
-            <h2>OliDuck</h2>
+    <!-- Esattamente due pannelli principali: dashboard CTF e tutor AI. -->
+    <main id="main-content" class="workspace" data-view="assistant" data-assistant-collapsed="false" style="--dashboard-width: 60%">
+      <section class="panel dashboard-panel" id="library-panel" aria-labelledby="library-title" role="tabpanel" aria-label="Dashboard CTF">
+        <header class="dashboard-header">
+          <div class="dashboard-heading">
+            <p class="eyebrow">CTF Dashboard</p>
+            <h1 id="library-title">OliCyber Training <span id="dashboard-title-numbers"></span></h1>
+            <p class="dashboard-summary" id="dashboard-summary">Caricamento del catalogo…</p>
           </div>
-        </div>
-
-        <button type="button" class="btn btn--primary btn--sm history-sidebar__new" id="new-chat">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-          Nuova chat
-        </button>
-
-        <nav class="history-nav" aria-label="Viste dell'area di lavoro">
-          <button type="button" data-sidebar-view="training" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h5" /></svg>
-            Training
-          </button>
-          <button type="button" data-sidebar-view="library" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6v14H4zM14 5h6v14h-6z" /></svg>
-            Libreria
-          </button>
-          <button type="button" data-sidebar-view="assistant" aria-pressed="true">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" /></svg>
-            Tutor AI
-          </button>
-        </nav>
-
-        <div class="history-sidebar__scroll">
-          <section class="history-group" aria-labelledby="history-challenge-title">
-            <div class="history-group__head">
-              <h3 id="history-challenge-title">Chat challenge</h3>
-              <span id="history-challenge-count">0</span>
-            </div>
-            <div class="history-list" id="chat-history-challenge" role="list"></div>
-          </section>
-          <section class="history-group" aria-labelledby="history-general-title">
-            <div class="history-group__head">
-              <h3 id="history-general-title">Chat generali</h3>
-              <span id="history-general-count">0</span>
-            </div>
-            <div class="history-list" id="chat-history-general" role="list"></div>
-          </section>
-        </div>
-
-        <div class="history-sidebar__footer">
-          <button type="button" class="btn btn--outline btn--sm" id="restore-assistant" hidden>Ripristina tutor AI</button>
-          <p>Le chat restano in questo browser. I titoli derivano dal primo messaggio.</p>
-        </div>
-      </aside>
-
-      <!-- B. Challenge Library (~40% per impostazione predefinita) -->
-      <section class="panel library-panel" id="library-panel" aria-labelledby="library-title" role="tabpanel" aria-label="Challenge Library">
-        <div class="panel__header">
-          <div>
-            <p class="eyebrow">Esplora</p>
-            <h1 id="library-title">Challenge Library</h1>
-          </div>
-          <div class="panel__header-actions">
-            <span class="count-badge" id="challenge-count" aria-live="polite">0 challenge</span>
-            <button type="button" class="icon-btn" id="expand-library" aria-label="Espandi la libreria" title="Espandi la libreria">
+          <div class="dashboard-header__actions">
+            <button type="button" class="btn btn--outline btn--sm dashboard-tool" data-dialog-open="training">Training</button>
+            <button type="button" class="btn btn--outline btn--sm dashboard-tool" data-dialog-open="history">Cronologia</button>
+            <button type="button" class="btn btn--outline btn--sm" id="restore-assistant" hidden>Ripristina tutor</button>
+            <button type="button" class="icon-btn" id="expand-library" aria-label="Espandi la dashboard" title="Espandi la dashboard">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
             </button>
           </div>
-        </div>
+        </header>
 
-        <div class="library-controls">
+        <div class="dashboard-controls">
           <label class="field">
             <span class="field__label">Cerca</span>
             <span class="input-icon">
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-              <input type="search" id="search-input" placeholder="Titolo, ID, descrizione o tag…" autocomplete="off" />
+              <input type="search" id="search-input" placeholder="Titolo, ID, categoria o tag…" autocomplete="off" />
             </span>
           </label>
           <div class="filter-row">
@@ -133,28 +84,19 @@
               <select id="category-filter"><option value="all">Tutte</option></select>
             </label>
             <label class="field">
-              <span class="field__label">Difficoltà</span>
-              <select id="difficulty-filter"><option value="all">Tutte</option></select>
-            </label>
-            <label class="field">
-              <span class="field__label">Edizione</span>
-              <select id="edition-filter"><option value="all">Tutte</option></select>
-            </label>
-            <label class="field">
-              <span class="field__label">Percorso</span>
-              <select id="path-filter"><option value="all">Tutti</option></select>
-            </label>
-            <label class="field">
-              <span class="field__label">Tag</span>
-              <select id="tag-filter"><option value="all">Tutti</option></select>
-            </label>
-            <label class="field">
-              <span class="field__label">Stato personale</span>
+              <span class="field__label">Stato</span>
               <select id="status-filter">
                 <option value="all">Tutti</option>
                 <option value="todo">Da fare</option>
                 <option value="in-progress">In corso</option>
-                <option value="completed">Completata</option>
+                <option value="completed">Risolte</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field__label">Preferiti</span>
+              <select id="favorite-filter">
+                <option value="all">Tutte</option>
+                <option value="favorites">Solo preferite</option>
               </select>
             </label>
             <label class="field">
@@ -162,43 +104,52 @@
               <select id="sort-filter"></select>
             </label>
           </div>
-          <button type="button" class="link-btn clear-filters" id="clear-filters">Azzera filtri e ordinamento</button>
+          <details class="advanced-filters">
+            <summary>Filtri avanzati</summary>
+            <div class="filter-row">
+              <label class="field">
+                <span class="field__label">Difficoltà</span>
+                <select id="difficulty-filter"><option value="all">Tutte</option></select>
+              </label>
+              <label class="field">
+                <span class="field__label">Edizione</span>
+                <select id="edition-filter"><option value="all">Tutte</option></select>
+              </label>
+              <label class="field">
+                <span class="field__label">Percorso</span>
+                <select id="path-filter"><option value="all">Tutti</option></select>
+              </label>
+              <label class="field">
+                <span class="field__label">Tag</span>
+                <select id="tag-filter"><option value="all">Tutti</option></select>
+              </label>
+            </div>
+          </details>
+          <div class="dashboard-controls__footer">
+            <span class="count-badge" id="challenge-count" aria-live="polite">0 challenge</span>
+            <button type="button" class="link-btn clear-filters" id="clear-filters">Azzera filtri e ordinamento</button>
+          </div>
         </div>
 
-        <div class="library-list" id="challenge-list" role="list" aria-label="Elenco challenge" tabindex="0">
-          <div class="library-items" id="challenge-items" role="presentation"></div>
+        <div class="dashboard-scroll" id="challenge-list" role="list" aria-label="Challenge per categoria" tabindex="0">
+          <div class="dashboard-container" id="challenge-items" role="presentation"></div>
         </div>
-        <div class="library-footnote" id="library-footnote">
+        <footer class="dashboard-footer" id="library-footnote">
           <span class="provenance-badge" id="catalog-provenance" aria-label="Provenienza del catalogo">…</span>
           <span id="catalog-source-note">Caricamento del catalogo…</span>
-        </div>
+        </footer>
       </section>
 
-      <!-- C. Training: dashboard, contesto di studio e azioni rapide. -->
-      <section class="training-surface" id="training-panel" aria-labelledby="training-title">
-        <div class="training-surface__header">
-          <div>
-            <p class="eyebrow">Area di studio</p>
-            <h2 id="training-title">Training</h2>
-          </div>
-          <button type="button" class="icon-btn training-surface__close" id="close-training" aria-label="Chiudi la vista Training" title="Chiudi">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
-          </button>
-        </div>
-        <div class="training-surface__body" id="training-body"></div>
-      </section>
-
-      <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" aria-label="Ridimensiona i pannelli" aria-valuemin="22" aria-valuemax="72" aria-valuenow="40" tabindex="0" title="Trascina per ridimensionare · doppio clic per ripristinare">
+      <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" aria-label="Ridimensiona dashboard e tutor" aria-valuemin="35" aria-valuemax="75" aria-valuenow="60" tabindex="0" title="Trascina per ridimensionare · doppio clic per ripristinare 60% / 40%">
         <span class="splitter__grip" aria-hidden="true"></span>
       </div>
 
-      <!-- B. OliDuck Assistant (~60% per impostazione predefinita) -->
       <aside class="panel assistant-panel" id="assistant-panel" aria-labelledby="assistant-title" role="tabpanel" aria-label="OliDuck Assistant">
-        <div class="panel__header panel__header--compact">
+        <header class="panel__header panel__header--compact">
           <div class="panel__title-group">
             <img class="panel__brand-mark" src="/assets/brand/oliduck-logo-mark.png" alt="" aria-hidden="true" width="340" height="340" />
-            <div>
-              <p class="eyebrow">Tutor didattico</p>
+            <div class="panel__title-copy">
+              <p class="eyebrow" id="assistant-challenge-label">Tutor didattico</p>
               <h2 id="assistant-title">OliDuck Assistant</h2>
             </div>
           </div>
@@ -206,14 +157,14 @@
             <button type="button" class="icon-btn" id="clear-chat" title="Cancella conversazione" aria-label="Cancella la conversazione corrente" disabled>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5" /></svg>
             </button>
-            <button type="button" class="icon-btn" id="expand-assistant" aria-label="Espandi l'assistente" title="Espandi l'assistente">
+            <button type="button" class="icon-btn" id="expand-assistant" aria-label="Espandi il tutor" title="Espandi il tutor">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
             </button>
             <button type="button" class="icon-btn" id="toggle-assistant" aria-label="Comprimi il tutor AI" aria-pressed="false" title="Comprimi il tutor AI">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
             </button>
           </div>
-        </div>
+        </header>
 
         <div class="assistant-mode" role="radiogroup" aria-label="Modalità di conversazione">
           <button type="button" id="mode-general" role="radio" aria-checked="true" tabindex="0">
@@ -261,7 +212,7 @@
           <div class="chat-form__footer">
             <span class="chat-hint">Invio per inviare · Shift+Invio per andare a capo</span>
             <div class="chat-form__buttons">
-              <button type="button" class="btn btn--outline btn--sm" id="cancel-chat" hidden>Annulla</button>
+              <button type="button" class="btn btn--outline btn--sm" id="cancel-chat" hidden>Ferma</button>
               <button type="submit" class="btn btn--primary btn--sm" id="send-chat">
                 Invia
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 16-8-6 16-3-6-7-2Z" /></svg>
@@ -272,7 +223,57 @@
       </aside>
     </main>
 
-    <!-- Dettagli in overlay: non è una terza colonna e non blocca la chat. -->
+    <!-- Cronologia e Training: controlli compatti in dialogo, non pannelli permanenti. -->
+    <dialog class="modal modal--wide" id="history-dialog" aria-labelledby="history-title">
+      <div class="modal__inner">
+        <div class="modal__header">
+          <div>
+            <p class="eyebrow">Workspace</p>
+            <h2 id="history-title">Cronologia chat</h2>
+          </div>
+          <button type="button" class="icon-btn" data-dialog-close aria-label="Chiudi la cronologia">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <div class="modal__body">
+          <button type="button" class="btn btn--primary btn--sm" id="new-chat">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+            Nuova chat
+          </button>
+          <section class="history-group" aria-labelledby="history-challenge-title">
+            <div class="history-group__head">
+              <h3 id="history-challenge-title">Chat challenge</h3>
+              <span id="history-challenge-count">0</span>
+            </div>
+            <div class="history-list" id="chat-history-challenge" role="list"></div>
+          </section>
+          <section class="history-group" aria-labelledby="history-general-title">
+            <div class="history-group__head">
+              <h3 id="history-general-title">Chat generali</h3>
+              <span id="history-general-count">0</span>
+            </div>
+            <div class="history-list" id="chat-history-general" role="list"></div>
+          </section>
+          <p class="history-note">Le chat restano in questo browser. I titoli derivano dal primo messaggio.</p>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="modal modal--wide" id="training-dialog" aria-labelledby="training-title">
+      <div class="modal__inner">
+        <div class="modal__header">
+          <div>
+            <p class="eyebrow">Area di studio</p>
+            <h2 id="training-title">Training</h2>
+          </div>
+          <button type="button" class="icon-btn" id="close-training" data-dialog-close aria-label="Chiudi la vista Training">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <div class="modal__body" id="training-body"></div>
+      </div>
+    </dialog>
+
     <div class="drawer-layer" id="drawer-layer" hidden>
       <button type="button" class="drawer-backdrop" id="details-backdrop" aria-label="Chiudi i dettagli" tabindex="-1"></button>
       <aside class="drawer" id="details-drawer" role="dialog" aria-modal="true" aria-labelledby="details-title" aria-hidden="true" inert>
@@ -305,10 +306,10 @@
             </select>
           </label>
           <label class="field">
-            <span class="field__label" for="panel-width-setting">Libreria: <span id="panel-width-value">40%</span> (assistente: <span id="assistant-width-value">60%</span>)</span>
-            <input type="range" id="panel-width-setting" min="22" max="72" step="1" value="40" />
+            <span class="field__label" for="panel-width-setting">Dashboard: <span id="panel-width-value">60%</span> (tutor: <span id="assistant-width-value">39%</span>)</span>
+            <input type="range" id="panel-width-setting" min="35" max="75" step="1" value="60" />
           </label>
-          <button type="button" class="btn btn--outline btn--sm" id="reset-panels">Ripristina 40% / 60%</button>
+          <button type="button" class="btn btn--outline btn--sm" id="reset-panels">Ripristina 60% / 40%</button>
           <div class="settings-note" id="storage-note"></div>
           <div class="danger-zone">
             <h3>Dati locali</h3>
@@ -331,8 +332,8 @@
         <div class="modal__body prose">
           <p class="about-brand"><img src="/assets/brand/oliduck-logo-lockup.png" alt="Logo OliDuck" width="481" height="462" /></p>
           <p><strong>OliDuck</strong> è un ambiente di studio indipendente per chi si prepara alle Olimpiadi Italiane di Cybersicurezza. Il nome unisce OliCyber e il concetto di <em>rubber duck debugging</em>: spiegare un problema ad alta voce per capirlo meglio.</p>
-          <p>Il workspace organizza tre aree: navigazione e cronologia chat a sinistra, Training e Challenge Library al centro, tutor AI a destra. Puoi chiedere informazioni generali oppure aprire una conversazione dedicata alla challenge selezionata. OliDuck non fornisce subito soluzioni: aiuta a comprendere il problema, individuare i concetti, ricevere hint progressivi e verificare il proprio ragionamento.</p>
-          <p>Le challenge incluse sono esempi didattici contrassegnati come DEMO e non sostituiscono il portale ufficiale. Le fonti pubbliche disponibili e i limiti del catalogo sono documentati in <code>docs/PUBLIC-SOURCES-RESEARCH.md</code>.</p>
+          <p>Il workspace ha due pannelli: la dashboard CTF con le challenge per categoria e il tutor AI. Puoi chiedere informazioni generali oppure aprire una conversazione dedicata alla challenge selezionata. Cronologia e Training si aprono come controlli compatti e non occupano un pannello permanente.</p>
+          <p>OliDuck non fornisce subito soluzioni: aiuta a comprendere il problema, individuare i concetti, ricevere hint progressivi e verificare il proprio ragionamento. Le challenge incluse sono esempi didattici contrassegnati come DEMO e non sostituiscono il portale ufficiale.</p>
           <p>Nessun account è richiesto: progressi e conversazioni restano nel browser. Quando il backend AI non è configurato, l'assistente risponde in modalità DEMO in modo esplicito.</p>
         </div>
       </div>

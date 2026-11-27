@@ -25,7 +25,7 @@ function activeIndex(doc) {
   return doc.activeElement?.closest?.('.challenge-item')?.dataset.index ?? null;
 }
 
-test('lista virtualizzata conserva lo scroll e gestisce focus e navigazione da tastiera', async () => {
+test('dashboard completa: categorie reali, scroll conservato e navigazione da tastiera', async () => {
   const dom = setupDom();
   const { LocalStore } = await import('../public/src/store.js');
   const { createLibrary, ROW_HEIGHT } = await import('../public/src/library.js');
@@ -33,7 +33,7 @@ test('lista virtualizzata conserva lo scroll e gestisce focus e navigazione da t
   const challenges = Array.from({ length: 30 }, (_, index) => ({
     id: `test-${index}`,
     title: `Challenge ${String(index).padStart(2, '0')}`,
-    category: 'Web',
+    category: index < 18 ? 'Web' : 'Crypto',
     difficulty: 'Facile',
     demo: false,
     provenance: { verified: false },
@@ -46,33 +46,29 @@ test('lista virtualizzata conserva lo scroll e gestisce focus e navigazione da t
   const list = doc.getElementById('challenge-list');
   Object.defineProperty(list, 'clientHeight', { configurable: true, value: ROW_HEIGHT * 2 });
 
-  list.scrollTop = ROW_HEIGHT * 10;
-  library.render();
   let rows = [...doc.querySelectorAll('#challenge-items .challenge-item')];
-  assert.equal(rows.length, 10);
-  assert.equal(rows[0].dataset.index, '6');
-  assert.equal(rows.at(-1).dataset.index, '15');
+  assert.equal(rows.length, 30, 'nessuna virtualizzazione: tutte le card sono presenti');
   assert.equal(rows[0].getAttribute('role'), 'listitem');
-  assert.equal(rows[0].getAttribute('aria-posinset'), '7');
+  assert.equal(rows[0].getAttribute('aria-posinset'), '1');
   assert.equal(rows[0].getAttribute('aria-setsize'), '30');
+  const groups = [...doc.querySelectorAll('.ctf-category')];
+  assert.equal(groups.length, 2);
+  assert.match(groups[0].querySelector('.ctf-category__header').textContent, /18 challenge · 0 risolte/);
+  assert.match(groups[1].querySelector('.ctf-category__header').textContent, /12 challenge · 0 risolte/);
+  assert.equal(groups[0].querySelectorAll('.challenge-item').length, 18);
+  assert.match(doc.getElementById('dashboard-title-numbers').textContent, /30 challenge · 2 categorie/);
+  assert.match(doc.getElementById('dashboard-summary').textContent, /30 challenge · 0 risolte · 0 in corso · 30 da fare/);
 
+  list.scrollTop = ROW_HEIGHT * 10;
   rows[0].querySelector('.challenge-item__main').focus();
   press(doc.activeElement, 'ArrowDown');
-  assert.equal(activeIndex(doc), '7');
-  assert.equal(list.scrollTop, ROW_HEIGHT * 7);
-  rows = [...doc.querySelectorAll('#challenge-items .challenge-item')];
-  assert.equal(rows.some((row) => row.dataset.index === '7'), true);
-
+  assert.equal(activeIndex(doc), '1');
+  press(doc.activeElement, 'End');
+  assert.equal(activeIndex(doc), '29');
+  assert.equal(list.scrollTop > 0, true);
   press(doc.activeElement, 'Home');
   assert.equal(activeIndex(doc), '0');
   assert.equal(list.scrollTop, 0);
-
-  press(doc.activeElement, 'End');
-  assert.equal(activeIndex(doc), '29');
-  assert.equal(list.scrollTop, ROW_HEIGHT * 28);
-  rows = [...doc.querySelectorAll('#challenge-items .challenge-item')];
-  assert.equal(rows.some((row) => row.dataset.index === '29'), true);
-  assert.equal(rows.length < challenges.length, true);
 
   // Aggiornamenti non strutturali: selezione e stato non azzerano lo scroll.
   list.scrollTop = ROW_HEIGHT * 5;
@@ -82,6 +78,8 @@ test('lista virtualizzata conserva lo scroll e gestisce focus e navigazione da t
   store.setStatus('test-10', 'completed');
   library.render();
   assert.equal(list.scrollTop, ROW_HEIGHT * 5);
+  assert.equal(doc.querySelector('.challenge-item[data-id="test-10"] .ctf-status').dataset.status, 'solved');
+  assert.match(doc.getElementById('dashboard-summary').textContent, /1 risolte/);
 
   // Il cambio filtro è strutturale: lo scroll torna all'inizio.
   store.setFilter('query', 'Challenge 07');
@@ -93,10 +91,10 @@ test('lista virtualizzata conserva lo scroll e gestisce focus e navigazione da t
   dom.window.close();
 });
 
-test('card compatte mostrano solo dati reali e separano dettaglio dalla chat', async () => {
+test('card CTF: numeri reali, badge punti e risoluzioni, preferiti e dettaglio separato dalla chat', async () => {
   const dom = setupDom();
   const { LocalStore } = await import('../public/src/store.js');
-  const { createLibrary, ROW_HEIGHT } = await import('../public/src/library.js');
+  const { createLibrary } = await import('../public/src/library.js');
   const challenges = [
     {
       id: 'olicyber-9', originalId: '9', title: 'Challenge completa', category: 'Web',
@@ -121,28 +119,29 @@ test('card compatte mostrano solo dati reali e separano dettaglio dalla chat', a
     onSelect: (challenge, nowSelected) => selected.push([challenge.id, nowSelected]),
     onOpenDetails: (challenge) => opened.push(challenge.id),
   });
-  store.subscribe(() => library.syncFilters());
   const doc = dom.window.document;
   const rows = [...doc.querySelectorAll('#challenge-items .challenge-item')];
 
   assert.equal(rows.length, 2);
-  assert.equal(rows[0].style.top, '0px');
-  assert.equal(rows[1].style.top, `${ROW_HEIGHT}px`);
-  const full = rows[0].querySelector('.challenge-item__main');
+  const fullRow = doc.querySelector('#challenge-items .challenge-item[data-id="olicyber-9"]');
+  const minimalRow = doc.querySelector('#challenge-items .challenge-item[data-id="olicyber-10"]');
+  const full = fullRow.querySelector('.challenge-item__main');
   for (const text of [
-    '#9', 'Challenge completa', 'NON VERIFICATA', 'Web', 'Facile', 'HTTP',
-    '120 pt', 'Online', 'Descrizione breve', 'Risolte', 'Ada', 'Allegati',
+    '#9', 'Challenge completa', 'NON VERIFICATA', 'Web',
+    '120 pt', '42 risoluzioni', 'HTTP', 'Descrizione breve', 'Ada', 'Allegati',
   ]) {
     assert.equal(full.textContent.includes(text), true, `manca "${text}" dalla card`);
   }
-  assert.equal(full.querySelector('.challenge-item__description').textContent, 'Descrizione breve');
+  assert.equal(full.querySelector('.ctf-badge--points').textContent, '120 pt');
+  assert.equal(full.querySelector('.ctf-badge--solves').textContent, '42 risoluzioni');
+  assert.equal(full.querySelector('.ctf-card__description').textContent, 'Descrizione breve');
+  assert.equal(fullRow.querySelector('.ctf-status').dataset.status, 'unsolved');
 
-  const minimal = rows[1].querySelector('.challenge-item__main');
-  assert.equal(minimal.querySelector('.challenge-item__description'), null);
+  const minimal = minimalRow.querySelector('.challenge-item__main');
+  assert.equal(minimal.querySelector('.ctf-card__description'), null);
   assert.equal(minimal.querySelector('.challenge-item__extras'), null);
-  assert.equal(minimal.querySelector('.tag--difficulty'), null);
-  assert.equal(minimal.querySelector('.challenge-item__score'), null);
-  assert.equal(minimal.querySelector('.challenge-item__state'), null);
+  assert.equal(minimal.querySelector('.ctf-badge--points'), null);
+  assert.equal(minimal.querySelector('.ctf-badge--solves'), null);
 
   assert.equal(doc.getElementById('edition-filter').closest('.field').hidden, true);
   assert.equal(doc.getElementById('path-filter').closest('.field').hidden, true);
@@ -153,36 +152,51 @@ test('card compatte mostrano solo dati reali e separano dettaglio dalla chat', a
   library.correctFilters();
   assert.equal(store.state.preferences.filters.edition, 'all');
 
-  rows[0].querySelector('.challenge-item__chat').click();
+  // Preferiti: la card e il filtro derivato usano lo stesso stato reale.
+  fullRow.querySelector('.ctf-card__favorite').click();
+  assert.equal(store.isFavorite('olicyber-9'), true);
+  const favoriteRow = doc.querySelector('#challenge-items .challenge-item[data-id="olicyber-9"]');
+  assert.equal(favoriteRow.querySelector('.ctf-card__favorite').getAttribute('aria-pressed'), 'true');
+  const favoriteFilter = doc.getElementById('favorite-filter');
+  favoriteFilter.value = 'favorites';
+  favoriteFilter.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  library.syncFilters();
+  assert.deepEqual(library.visible.map((item) => item.id), ['olicyber-9']);
+  favoriteFilter.value = 'all';
+  favoriteFilter.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  library.syncFilters();
+
+  doc.querySelector('#challenge-items .challenge-item[data-id="olicyber-9"] .challenge-item__chat').click();
+  library.render();
   assert.deepEqual(selected, [['olicyber-9', true]]);
   assert.deepEqual(store.getSelectedChallengeIds(), ['olicyber-9']);
   assert.deepEqual(opened, []);
-  // La card mostra lo stato di selezione e il pulsante ha un'etichetta esplicita.
-  let first = [...doc.querySelectorAll('#challenge-items .challenge-item')][0];
+  let first = doc.querySelector('#challenge-items .challenge-item[data-id="olicyber-9"]');
   assert.equal(first.classList.contains('is-selected'), true);
   assert.equal(first.querySelector('.challenge-item__chat').getAttribute('aria-pressed'), 'true');
   assert.match(first.querySelector('.challenge-item__chat').getAttribute('aria-label'), /^Rimuovi .+ dal contesto della chat$/);
 
-  rows[0].querySelector('.challenge-item__main').click();
+  first.querySelector('.challenge-item__main').click();
   assert.deepEqual(opened, ['olicyber-9']);
   assert.deepEqual(store.getSelectedChallengeIds(), ['olicyber-9']);
 
-  // Un secondo clic sul pulsante Chat rimuove solo quella challenge.
   first.querySelector('.challenge-item__chat').click();
+  library.render();
   assert.deepEqual(store.getSelectedChallengeIds(), []);
   assert.equal(selected.at(-1)[1], false);
-  first = [...doc.querySelectorAll('#challenge-items .challenge-item')][0];
+  first = doc.querySelector('#challenge-items .challenge-item[data-id="olicyber-9"]');
   assert.equal(first.classList.contains('is-selected'), false);
-  assert.equal(first.querySelector('.challenge-item__chat').getAttribute('aria-pressed'), 'false');
   assert.match(first.querySelector('.challenge-item__chat').getAttribute('aria-label'), /^Aggiungi .+ al contesto della chat$/);
 
   const search = doc.getElementById('search-input');
   search.value = 'inesistente';
   search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  library.syncFilters();
   assert.equal(library.visible.length, 0);
   assert.match(doc.getElementById('challenge-count').textContent, /^0 challenge/);
   assert.ok(doc.querySelector('.empty-list'));
   doc.querySelector('.empty-list button').click();
+  library.syncFilters();
   assert.equal(library.visible.length, 2);
   assert.equal(doc.querySelector('.empty-list'), null);
 
